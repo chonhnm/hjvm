@@ -7,17 +7,17 @@ import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getI
 import Numeric (showHex)
 import Util
 
-parseMagic :: Get Magic
+parseMagic :: Get U4
 parseMagic = do
   w <- getWord32be
   if w /= 0xcafebabe
     then fail $ "magic code check failed: 0x" ++ showHex (toInteger w) ""
     else return w
 
-parseMinorVersion :: Get MinorVersion
+parseMinorVersion :: Get U2
 parseMinorVersion = getWord16be
 
-parseMajorVersion :: Get MajorVersion
+parseMajorVersion :: Get U2
 parseMajorVersion = getWord16be
 
 parseVersion :: Get Version
@@ -31,6 +31,7 @@ parseVersion = do
 parseConstantPoolCount :: Get ConstantPoolCount
 parseConstantPoolCount = getWord16be
 
+-- Start parseConstantPoolInfo
 parseConstantPoolInfo :: Get ConstantPoolInfo
 parseConstantPoolInfo = do
   tag <- getWord8
@@ -111,3 +112,37 @@ parseConstantModule = Constant_Module <$> getWord16be
 
 parseConstantPackage :: Get CPInfo
 parseConstantPackage = Constant_Module <$> getWord16be
+
+-- End parseConstantPoolInfo
+parseAccessFlag :: Get ClassAccessFlag
+parseAccessFlag = toEnum . fromIntegral <$> getWord16be
+
+parseThisClass :: Get U2 
+parseThisClass = getWord16be
+
+parseSuperClass :: Get U2 
+parseSuperClass = getWord16be
+
+parseInterfacesCount :: Get U2 
+parseInterfacesCount = getWord16be
+
+parseInterface :: Get U2 
+parseInterface = getWord16be
+
+parseFieldsCount :: Get U2 
+parseFieldsCount = getWord16be
+
+parseField :: Get FieldInfo
+parseField = undefined
+
+parseMethodsCount :: Get U2 
+parseMethodsCount = getWord16be
+
+parseMethod :: Get MethodInfo
+parseMethod = undefined
+
+parseAttributesCount :: Get U2 
+parseAttributesCount = getWord16be
+
+parseAttribute :: Get AttributeInfo
+parseAttribute = undefined
