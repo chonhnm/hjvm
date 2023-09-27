@@ -99,7 +99,6 @@ data FieldInfo = FieldInfo
   { fi_accessFlags :: FieldAccessFlag,
     fi_nameIndex :: CPIndex,
     fi_descriptor_index :: CPIndex,
-    fi_attributesCount :: U2,
     fi_atrributes :: [AttributeInfo]
   }
 
@@ -109,7 +108,6 @@ data MethodInfo = MethodInfo
   { mi_accessFlags :: MethodAccessFlag,
     mi_nameIndex :: CPIndex,
     mi_descriptor_index :: CPIndex,
-    mi_attributesCount :: U2,
     mi_attributes :: [AttributeInfo]
   }
 

@@ -1,11 +1,13 @@
 module Buffer where
 
 import ClassFile
-import Control.Monad (liftM2)
+import Control.Monad (liftM2, liftM)
 import Data.Binary (Get, getWord8)
 import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be)
 import Numeric (showHex)
 import Util
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, local)
+import Control.Monad.Trans.Class (MonadTrans(lift))
 
 parseMagic :: Get U4
 parseMagic = do
@@ -117,32 +119,69 @@ parseConstantPackage = Constant_Module <$> getWord16be
 parseAccessFlag :: Get ClassAccessFlag
 parseAccessFlag = toEnum . fromIntegral <$> getWord16be
 
-parseThisClass :: Get U2 
+parseThisClass :: Get U2
 parseThisClass = getWord16be
 
-parseSuperClass :: Get U2 
+parseSuperClass :: Get U2
 parseSuperClass = getWord16be
 
-parseInterfacesCount :: Get U2 
+parseInterfacesCount :: Get U2
 parseInterfacesCount = getWord16be
 
-parseInterface :: Get U2 
+parseInterface :: Get U2
 parseInterface = getWord16be
 
-parseFieldsCount :: Get U2 
+parseFieldsCount :: Get U2
 parseFieldsCount = getWord16be
 
 parseField :: Get FieldInfo
-parseField = undefined
+parseField = do
+  flag <- getWord16be
+  nameIndex <- getWord16be
+  descIndex <- getWord16be
+  attrCount <- getWord16be
+  attrs <- parseList attrCount parseAttribute
+  return $ FieldInfo flag nameIndex descIndex attrs
 
-parseMethodsCount :: Get U2 
+parseList :: Monad m => U2 -> m a -> m [a]
+parseList 0 _ = return []
+parseList n m = do
+  val <- m
+  vals <- parseList (n - 1) m
+  return $ val : vals
+
+parseMethodsCount :: Get U2
 parseMethodsCount = getWord16be
 
 parseMethod :: Get MethodInfo
-parseMethod = undefined
+parseMethod = do
+  flags <- getWord16be
+  ni <- getWord16be
+  di <- getWord16be
+  cout <- getWord16be
+  attrs <- parseList cout parseAttribute
+  return $ MethodInfo flags ni di attrs
 
-parseAttributesCount :: Get U2 
+parseAttributesCount :: Get U2
 parseAttributesCount = getWord16be
 
 parseAttribute :: Get AttributeInfo
 parseAttribute = undefined
+
+parseClassFile :: Get ClassFile
+parseClassFile = undefined
+
+
+
+parseAttributeReader :: ReaderT ConstantPoolInfo Get Int
+parseAttributeReader = do
+  k <- ask
+  let a = cpInfo k
+  case a of
+    Constant_Utf8 v -> parseAttributeReader2
+
+
+parseAttributeReader2 :: ReaderT ConstantPoolInfo Get Int
+parseAttributeReader2 = undefined
+
+
