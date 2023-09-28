@@ -3,6 +3,7 @@
 {-# HLINT ignore "Use camelCase" #-}
 module ClassFile where
 
+import Data.Data (Data)
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
 import Data.Typeable (TypeRep, Typeable, typeOf)
@@ -31,11 +32,11 @@ type AttrIndex = U2
 type CPIndex = U2
 
 data CPInfo
-  = Constant_Utf8 T.Text
-  | Constant_Integer Int32
-  | Constant_Float Float
-  | Constant_Long Int64
-  | Constant_Double Double
+  = Constant_Utf8 ConstantUtf8
+  | Constant_Integer ConstantInteger
+  | Constant_Float ConstantFloat
+  | Constant_Long ConstantLong
+  | Constant_Double ConstantDouble
   | Constant_Class {_name_index :: CPIndex}
   | Constant_String {_string_index :: CPIndex}
   | Constant_Fieldref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
@@ -52,6 +53,13 @@ data CPInfo
 
 newtype ConstantUtf8 = ConstantUtf8 T.Text
 
+newtype ConstantInteger = ConstantInteger Int32
+
+newtype ConstantFloat = ConstantFloat Float
+
+newtype ConstantLong = ConstantLong Int64
+
+newtype ConstantDouble = ConstantDouble Double
 
 data ReferenceKind
   = REF_none -- 0
@@ -155,6 +163,7 @@ data AttrInfo
   | NestMembers [CPIndex]
   | Record [RecordComponentInfo]
   | PermittedSubclasses [CPIndex]
+  deriving (Typeable)
 
 data RecordComponentInfo = RecordComponentInfo
   { rc_name_index :: CPIndex,
@@ -358,11 +367,12 @@ class Seq s where
 class ConstantPool s a where
   convertIndex :: s a -> Int -> Maybe Int
   constPool :: s a -> Int -> a
-  constPoolWithTypeCheck :: TypeRep -> s a -> Int -> a
-  constUtf8 :: s a -> Int -> a
-  constInteger :: s a -> Int -> a
-  constFloat :: s a -> Int -> a
-
+  constPoolWithTypeCheck :: TypeRep -> s a -> Int -> CPInfo
+  constUtf8 :: s a -> Int -> ConstantUtf8
+  constInteger :: s a -> Int -> ConstantInteger
+  constFloat :: s a -> Int -> ConstantFloat
+  constLong :: s a -> Int -> ConstantLong
+  constDouble :: s a -> Int -> ConstantDouble
 
 instance ConstantPool [] CPInfo where
   convertIndex :: [CPInfo] -> Int -> Maybe Int
@@ -378,8 +388,8 @@ instance ConstantPool [] CPInfo where
   constPoolWithTypeCheck tr xs n =
     let cp = constPool xs n
      in if typeOf cp == tr
-          then cp
+          then cp 
           else error "PoolUnmatchedType"
-  constUtf8 = constPoolWithTypeCheck $ typeOf Constant_Utf8
-  constInteger = constPoolWithTypeCheck $ typeOf Constant_Integer
-  constFloat = constPoolWithTypeCheck $ typeOf Constant_Float
+  constUtf8 cp n = let Constant_Utf8 x = constPool cp n in x
+  constInteger cp n = let Constant_Integer x = constPool cp n in x
+  constFloat cp n = let Constant_Float x = constPool cp n in x

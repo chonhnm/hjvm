@@ -1,13 +1,14 @@
 module Buffer where
 
 import ClassFile
-import Control.Monad (liftM2, liftM)
+import Control.Monad (liftM2)
+import Control.Monad.Trans.Class (MonadTrans (lift))
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local)
 import Data.Binary (Get, getWord8)
 import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be)
+import Data.Text as T
 import Numeric (showHex)
 import Util
-import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, local, asks)
-import Control.Monad.Trans.Class (MonadTrans(lift))
 
 parseMagic :: Get U4
 parseMagic = do
@@ -62,20 +63,20 @@ parseConstantUtf8 :: Get CPInfo
 parseConstantUtf8 = do
   len <- getWord16be
   str <- getByteString $ fromIntegral len
-  return $ Constant_Utf8 (decodeUtf8Jvm str)
+  return $ (Constant_Utf8 . ConstantUtf8) (decodeUtf8Jvm str)
 
 parseConstantInteger :: Get CPInfo
-parseConstantInteger = Constant_Integer <$> getInt32be
+parseConstantInteger = Constant_Integer . ConstantInteger <$> getInt32be
 
 parseConstantFloat :: Get CPInfo
-parseConstantFloat = Constant_Float <$> getFloatbe
+parseConstantFloat = Constant_Float . ConstantFloat <$> getFloatbe
 
 -- TODO: Long and Double take up two entries in the constant_pool table
 parseConstantLong :: Get CPInfo
-parseConstantLong = Constant_Long <$> getInt64be
+parseConstantLong = Constant_Long . ConstantLong <$> getInt64be
 
 parseConstantDouble :: Get CPInfo
-parseConstantDouble = Constant_Double <$> getDoublebe
+parseConstantDouble = Constant_Double . ConstantDouble <$> getDoublebe
 
 parseConstantClass :: Get CPInfo
 parseConstantClass = Constant_Class <$> getWord16be
@@ -171,18 +172,43 @@ parseAttribute = undefined
 parseClassFile :: Get ClassFile
 parseClassFile = undefined
 
-
-
 parseAttributeReader :: ClassFileReader AttributeInfo
-parseAttributeReader = do 
-  cp <- asks constantPool 
+parseAttributeReader = do
+  cp <- asks constantPool
   attrNameIdx <- lift getWord16be
-  let Constant_Utf8 str = constUtf8 cp (fromIntegral attrNameIdx)
-  
-  return AttributeInfo{}
+  let ConstantUtf8 attrTag = constUtf8 cp (fromIntegral attrNameIdx)
+  let str = T.unpack attrTag
+  case str of
+    "ConstantValue" -> undefined
+    "Code" -> undefined
+    "StackMapTable" -> undefined
+    "Exceptions" -> undefined
+    "InnerClasses" -> undefined
+    "EnclosingMethod" -> undefined
+    "Synthetic" -> undefined
+    "Signature" -> undefined
+    "SourceFile" -> undefined
+    "SourceDebugExtension" -> undefined
+    "LineNumberTable" -> undefined
+    "LocalVariableTable" -> undefined
+    "LocalVariableTypeTable" -> undefined
+    "Deprecated" -> undefined
+    "RuntimeVisibleAnnotations" -> undefined
+    "RuntimeInvisibleAnnotations" -> undefined
+    "RuntimeVisibleParameterAnnotations" -> undefined
+    "RuntimeInvisibleParameterAnnotations" -> undefined
+    "RuntimeVisibleTypeAnnotations" -> undefined
+    "RuntimeInvisibleTypeAnnotations" -> undefined
+    "AnnotationDefault" -> undefined
+    "BootstrapMethods" -> undefined
+    "MethodParameters" -> undefined
+    "Module" -> undefined
+    "ModulePackages" -> undefined
+    "ModuleMainClass" -> undefined
+    "NestHost" -> undefined
+    "NestMembers" -> undefined
+    "Record" -> undefined
+    "PermittedSubclasses" -> undefined
+    _ -> error $ "Unspported attribute: " ++ str
 
-
-
-
-
-type ClassFileReader = ReaderT ClassFile Get 
+type ClassFileReader = ReaderT ClassFile Get
