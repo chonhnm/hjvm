@@ -5,6 +5,7 @@ module ClassFile where
 
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
+import Data.Typeable (TypeRep, Typeable, typeOf)
 import Data.Word (Word16, Word32, Word64, Word8)
 import Numeric (showHex)
 
@@ -47,6 +48,10 @@ data CPInfo
   | Constant_InvokeDynamic {_bootstrap_method_attr_index :: AttrIndex, _name_and_type_index :: CPIndex}
   | Constant_Module {_name_index :: CPIndex}
   | Constant_Package {_name_index :: CPIndex}
+  deriving (Typeable)
+
+newtype ConstantUtf8 = ConstantUtf8 T.Text
+
 
 data ReferenceKind
   = REF_none -- 0
@@ -307,7 +312,7 @@ data ClassFile = ClassFile
     minorVersion :: U2,
     majorVersion :: U2,
     constantPoolCount :: U2,
-    constantPool :: [ConstantPoolInfo],
+    constantPool :: [CPInfo],
     accessFlags :: ClassAccessFlag,
     thisClass :: CPIndex,
     superClass :: CPIndex,
@@ -346,3 +351,35 @@ javaVersion version =
     64 -> Just "20"
     65 -> Just "21"
     _ -> Nothing
+
+class Seq s where
+  fetch :: s a -> U2 -> Maybe a
+
+class ConstantPool s a where
+  convertIndex :: s a -> Int -> Maybe Int
+  constPool :: s a -> Int -> a
+  constPoolWithTypeCheck :: TypeRep -> s a -> Int -> a
+  constUtf8 :: s a -> Int -> a
+  constInteger :: s a -> Int -> a
+  constFloat :: s a -> Int -> a
+
+
+instance ConstantPool [] CPInfo where
+  convertIndex :: [CPInfo] -> Int -> Maybe Int
+  convertIndex xs n =
+    if n > 0 && n <= length xs
+      then Just (n - 1)
+      else Nothing
+  constPool :: [CPInfo] -> Int -> CPInfo
+  constPool xs n = case convertIndex xs n of
+    Nothing -> error "PoolOutOfBoundsException"
+    Just idx -> xs !! idx
+  constPoolWithTypeCheck :: TypeRep -> [CPInfo] -> Int -> CPInfo
+  constPoolWithTypeCheck tr xs n =
+    let cp = constPool xs n
+     in if typeOf cp == tr
+          then cp
+          else error "PoolUnmatchedType"
+  constUtf8 = constPoolWithTypeCheck $ typeOf Constant_Utf8
+  constInteger = constPoolWithTypeCheck $ typeOf Constant_Integer
+  constFloat = constPoolWithTypeCheck $ typeOf Constant_Float

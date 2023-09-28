@@ -6,7 +6,7 @@ import Data.Binary (Get, getWord8)
 import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be)
 import Numeric (showHex)
 import Util
-import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, local)
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, local, asks)
 import Control.Monad.Trans.Class (MonadTrans(lift))
 
 parseMagic :: Get U4
@@ -173,15 +173,16 @@ parseClassFile = undefined
 
 
 
-parseAttributeReader :: ReaderT ConstantPoolInfo Get Int
-parseAttributeReader = do
-  k <- ask
-  let a = cpInfo k
-  case a of
-    Constant_Utf8 v -> parseAttributeReader2
+parseAttributeReader :: ClassFileReader AttributeInfo
+parseAttributeReader = do 
+  cp <- asks constantPool 
+  attrNameIdx <- lift getWord16be
+  let Constant_Utf8 str = constUtf8 cp (fromIntegral attrNameIdx)
+  
+  return AttributeInfo{}
 
 
-parseAttributeReader2 :: ReaderT ConstantPoolInfo Get Int
-parseAttributeReader2 = undefined
 
 
+
+type ClassFileReader = ReaderT ClassFile Get 
