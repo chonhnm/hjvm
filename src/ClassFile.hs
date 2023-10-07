@@ -127,7 +127,7 @@ data MethodInfo = MethodInfo
 type MethodAccessFlag = U2
 
 data AttributeInfo = AttributeInfo
-  { attr_name_index :: CPIndex,
+  { 
     attr_length :: U4,
     attr_info :: AttrInfo
   }
@@ -135,8 +135,8 @@ data AttributeInfo = AttributeInfo
 data AttrInfo
   = ConstantValue {_constantvalue_index :: CPIndex}
   | Code CodeAttr
-  | StackMapTable {_number_of_entries :: U2, _entries :: [StackMapFrame]}
-  | Exceptions {_number_of_exceptions :: U2, _exception_index_table :: [CPIndex]}
+  | StackMapTable {_entries :: [StackMapFrame]}
+  | Exceptions {_exception_index_table :: [CPIndex]}
   | InnerClasses {_classes :: [InnerClass]}
   | EnclosingMethod {_ai_class_index :: CPIndex, _ai_method_index :: CPIndex}
   | Synthetic
@@ -176,10 +176,10 @@ data ModuleAttr = ModuleAttr
     module_flags :: U2,
     module_version_index :: U2,
     requires :: [(U2, U2, U2)],
-    exports :: [(U2, U2, U2, U2)],
-    opens :: [(U2, U2, U2, U2)],
+    exports :: [(U2, U2, [U2])],
+    opens :: [(U2, U2, [U2])],
     uses_index :: [U2],
-    privides :: [(U2, U2, U2)]
+    privides :: [(U2, [U2])]
   }
 
 data BootstrapMethod = BootstrapMethod
@@ -255,31 +255,31 @@ data InnerClass = InnerClass
   }
 
 data StackMapFrame
-  = Same_Frame {_frame_type :: U1} -- 0-63
+  = Same_Frame {frame_type :: U1} -- 0-63
   | Same_locals_1_stack_item_frame
-      { _frame_type :: U1, -- 64-127
+      { frame_type :: U1, -- 64-127
         _stack :: [VerificationTypeInfo]
       }
   | Same_locals_1_stack_item_frame_extented
-      { _frame_type :: U1, -- 247
+      { frame_type :: U1, -- 247
         _offset_delta :: U2,
         _stack :: [VerificationTypeInfo]
       }
   | Chop_frame
-      { _frame_type :: U1, -- 248-250
+      { frame_type :: U1, -- 248-250
         _offset_delta :: U2
       }
   | Same_frame_extented
-      { _frame_type :: U1, -- 251
+      { frame_type :: U1, -- 251
         _offset_delta :: U2
       }
   | Append_frame
-      { _frame_type :: U1, -- 252-254
+      { frame_type :: U1, -- 252-254
         _offset_delta :: U2,
         _locals :: [VerificationTypeInfo]
       }
   | Full_frame
-      { _frame_type :: U1, -- 255
+      { frame_type :: U1, -- 255
         _offset_delta :: U2,
         _number_of_locals :: U2,
         _locals :: [VerificationTypeInfo],
@@ -388,7 +388,7 @@ instance ConstantPool [] CPInfo where
   constPoolWithTypeCheck tr xs n =
     let cp = constPool xs n
      in if typeOf cp == tr
-          then cp 
+          then cp
           else error "PoolUnmatchedType"
   constUtf8 cp n = let Constant_Utf8 x = constPool cp n in x
   constInteger cp n = let Constant_Integer x = constPool cp n in x
