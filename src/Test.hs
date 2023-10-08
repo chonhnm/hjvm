@@ -1,3 +1,5 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+
 module Test where
 
 import ClassFile (ConstantFloat, ConstantInteger, ConstantPoolInfo (cpInfo))
@@ -10,10 +12,10 @@ import Control.Monad.Trans.Reader
 import Data.Data
 import Data.Data (constrFields)
 import Data.Int
+import Data.List (insert)
 import Data.Text qualified as T
 import Data.Typeable (TypeRep, Typeable, cast, typeOf)
 import Text.Printf
-import Data.List (insert)
 
 parseReader :: IO ()
 parseReader = do
@@ -107,8 +109,11 @@ readCF :: CPInfo -> CPInfo
 readCF = checkType $ typeOf CF
 
 class CP a
+
 instance CP ConstUtf8
+
 instance CP ConstInteger
+
 instance CP ConstFloat
 
 type GoID = Int
@@ -146,22 +151,22 @@ data CPL = A ConstantInteger | B ConstantFloat
 readA :: CPL -> ConstantInteger
 readA cp = let A x = cp in x
 
-class CPP cp where 
-  unwarp1 :: cp a -> a  
+class CPP cp where
+  unwarp1 :: cp a -> a
 
-instance CPP ConstPool where 
-  unwarp1 (ConstPool a ) = a 
-  
+instance CPP ConstPool where
+  unwarp1 (ConstPool a) = a
 
-newtype ConstPool a = ConstPool {unwrap::a }
+newtype ConstPool a = ConstPool {unwrap :: a}
 
 cpUtf8 :: ConstPool ConstUtf8
 cpUtf8 = ConstPool $ ConstUtf8 "jvm"
+
 cpInt :: ConstPool ConstInteger
 cpInt = ConstPool $ ConstInteger 12
 
 utf8Val :: ConstUtf8
 utf8Val = unwrap cpUtf8
-intVal :: ConstInteger
-intVal = unwrap cpInt 
 
+intVal :: ConstInteger
+intVal = unwrap cpInt

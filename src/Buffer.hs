@@ -3,9 +3,10 @@ module Buffer where
 import ClassFile
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.Trans.Reader (ReaderT, asks)
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local)
 import Data.Binary (Get, getWord8)
-import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, lookAhead)
+import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, isEmpty, lookAhead, runGet)
+import Data.ByteString.Lazy as BL hiding (elem)
 import Data.Char (chr)
 import Data.Text as T hiding (elem)
 import GHC.Base (assert)
@@ -118,8 +119,8 @@ parseConstantPackage :: Get CPInfo
 parseConstantPackage = Constant_Module <$> getWord16be
 
 -- End parseConstantPoolInfo
-parseAccessFlag :: Get ClassAccessFlag
-parseAccessFlag = toEnum . fromIntegral <$> getWord16be
+parseAccessFlag :: Get U2
+parseAccessFlag = getWord16be
 
 parseThisClass :: Get U2
 parseThisClass = getWord16be
@@ -136,13 +137,13 @@ parseInterface = getWord16be
 parseFieldsCount :: Get U2
 parseFieldsCount = getWord16be
 
-parseField :: Get FieldInfo
+parseField :: ClassFileReader FieldInfo
 parseField = do
-  flag <- getWord16be
-  nameIndex <- getWord16be
-  descIndex <- getWord16be
-  attrCount <- getWord16be
-  attrs <- parseList attrCount parseAttribute
+  flag <- lift getWord16be
+  nameIndex <- lift getWord16be
+  descIndex <- lift getWord16be
+  attrCount <- lift getWord16be
+  attrs <- parseList attrCount parseAttributeInfo
   return $ FieldInfo flag nameIndex descIndex attrs
 
 parseList :: (Monad m, Integral n) => n -> m a -> m [a]
@@ -156,13 +157,13 @@ parseList _ _ = error "n is less than zero."
 parseMethodsCount :: Get U2
 parseMethodsCount = getWord16be
 
-parseMethod :: Get MethodInfo
+parseMethod :: ClassFileReader MethodInfo
 parseMethod = do
-  flags <- getWord16be
-  ni <- getWord16be
-  di <- getWord16be
-  cout <- getWord16be
-  attrs <- parseList cout parseAttribute
+  flags <- lift getWord16be
+  ni <- lift getWord16be
+  di <- lift getWord16be
+  cout <- lift getWord16be
+  attrs <- parseList cout parseAttributeInfo
   return $ MethodInfo flags ni di attrs
 
 parseAttributesCount :: Get U2
@@ -682,29 +683,37 @@ parseAttributeInfo = do
 
 type ClassFileReader = ReaderT ClassFile Get
 
--- TODO
-parseAttribute :: Get AttributeInfo
-parseAttribute = undefined
-
-parseClassFile :: Get ClassFile
+parseClassFile :: ClassFileReader ClassFile
 parseClassFile = do
-  _ <- parseMagic
-  minorVer <- parseMinorVersion
-  majorVer <- parseMajorVersion
-  cpc <- parseConstantPoolCount
-  cp <- parseList (cpc - 1) parseConstantPoolInfo
-  accFlags <- parseAccessFlag
-  thisClass <- parseThisClass
-  superClass <- parseSuperClass
-  interfaceCount <- parseInterfacesCount
-  interfaces <- parseList interfaceCount parseInterface
-  fieldsCount <- parseFieldsCount
-  fields <- parseList fieldsCount parseField
-  methodsCount <- parseMethodsCount
-  methods <- parseList methodsCount parseMethod
-  attrCount <- parseAttributesCount
-  attrs <- parseList attrCount parseAttribute
-  return $
+  _ <- lift parseMagic
+  minorVer <- lift parseMinorVersion
+  majorVer <- lift parseMajorVersion
+  cpc <- lift parseConstantPoolCount
+  cp <- parseList (cpc - 1) $ lift parseConstantPoolInfo
+  accFlags <- lift parseAccessFlag
+  thisClass <- lift parseThisClass
+  superClass <- lift parseSuperClass
+  interfaceCount <- lift parseInterfacesCount
+  interfaces <- parseList interfaceCount $ lift parseInterface
+  fieldsCount <- lift parseFieldsCount
+  etpClazz <- ask
+  let initClass =
+        etpClazz
+          { minorVersion = minorVer,
+            majorVersion = majorVer,
+            constantPool = cp,
+            accessFlags = accFlags,
+            thisClass = thisClass,
+            superClass = superClass,
+            interfaces = interfaces
+          }
+  fields <- parseList fieldsCount (local (const initClass) parseField)
+  methodsCount <- lift parseMethodsCount
+  methods <- parseList methodsCount (local (const initClass {fields = fields}) parseMethod)
+  attrCount <- lift parseAttributesCount
+  attrs <- parseList attrCount (local (const initClass {fields = fields, methods = methods}) parseAttributeInfo)
+  ept <- lift isEmpty
+  assert ept return $
     ClassFile
       { minorVersion = minorVer,
         majorVersion = majorVer,
@@ -717,3 +726,9 @@ parseClassFile = do
         methods = methods,
         attributes = attrs
       }
+
+runParseClassFile :: FilePath -> IO ()
+runParseClassFile file = do
+  input <- BL.readFile file
+  let clazz = runGet (runReaderT parseClassFile emptyClassFile) input
+  print  "classfile: ok!"

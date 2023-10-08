@@ -7,8 +7,7 @@ import Test ( parseReader )
 
 someFunc :: IO ()
 someFunc = do
-    putStrLn "someFunc"
     -- parseFile "HelloWorld.class"
     -- parseFileDirect "HelloWorld.class"
-    parseReader
+    runParseClassFile "HelloWorld.class"
 

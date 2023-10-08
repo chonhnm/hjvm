@@ -1,9 +1,10 @@
+{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use camelCase" #-}
 module ClassFile where
 
-import Data.Data (Data)
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
 import Data.Typeable (TypeRep, Typeable, typeOf)
@@ -49,17 +50,17 @@ data CPInfo
   | Constant_InvokeDynamic {_bootstrap_method_attr_index :: AttrIndex, _name_and_type_index :: CPIndex}
   | Constant_Module {_name_index :: CPIndex}
   | Constant_Package {_name_index :: CPIndex}
-  deriving (Typeable)
+  deriving (Typeable, Show)
 
-newtype ConstantUtf8 = ConstantUtf8 T.Text
+newtype ConstantUtf8 = ConstantUtf8 T.Text deriving (Show)
 
-newtype ConstantInteger = ConstantInteger Int32
+newtype ConstantInteger = ConstantInteger Int32 deriving (Show)
 
-newtype ConstantFloat = ConstantFloat Float
+newtype ConstantFloat = ConstantFloat Float deriving (Show)
 
-newtype ConstantLong = ConstantLong Int64
+newtype ConstantLong = ConstantLong Int64 deriving (Show)
 
-newtype ConstantDouble = ConstantDouble Double
+newtype ConstantDouble = ConstantDouble Double deriving (Show)
 
 data ReferenceKind
   = REF_none -- 0
@@ -72,7 +73,7 @@ data ReferenceKind
   | REF_invokeSpecial -- 7
   | REF_newInvokeSpecial -- 8
   | REF_invokeInterface -- 9
-  deriving (Enum)
+  deriving (Enum, Show)
 
 data ClassAccessFlag
   = ACC_PUBLIC
@@ -114,6 +115,7 @@ data FieldInfo = FieldInfo
     fi_descriptor_index :: CPIndex,
     fi_atrributes :: [AttributeInfo]
   }
+  deriving (Typeable, Show)
 
 type FieldAccessFlag = U2
 
@@ -123,6 +125,7 @@ data MethodInfo = MethodInfo
     mi_descriptor_index :: CPIndex,
     mi_attributes :: [AttributeInfo]
   }
+  deriving (Show)
 
 type MethodAccessFlag = U2
 
@@ -130,6 +133,7 @@ data AttributeInfo = AttributeInfo
   { attr_length :: U4,
     attr_info :: AttrInfo
   }
+  deriving (Show)
 
 data AttrInfo
   = ConstantValue {_constantvalue_index :: CPIndex}
@@ -162,13 +166,14 @@ data AttrInfo
   | NestMembers [CPIndex]
   | Record [RecordComponentInfo]
   | PermittedSubclasses [CPIndex]
-  deriving (Typeable)
+  deriving (Typeable, Show)
 
 data RecordComponentInfo = RecordComponentInfo
   { rc_name_index :: CPIndex,
     rc_descriptor_index :: CPIndex,
     rc_attributes :: [AttributeInfo]
   }
+  deriving (Show)
 
 data ModuleAttr = ModuleAttr
   { module_name_index :: U2,
@@ -180,11 +185,13 @@ data ModuleAttr = ModuleAttr
     uses_index :: [U2],
     privides :: [(U2, [U2])]
   }
+  deriving (Show)
 
 data BootstrapMethod = BootstrapMethod
   { bootstrap_method_ref :: U2,
     bootstrap_arguments :: [U2]
   }
+  deriving (Show)
 
 data TypeAnnotation = TypeAnnotation
   { ta_target_type :: U1,
@@ -193,6 +200,7 @@ data TypeAnnotation = TypeAnnotation
     ta_type_index :: CPIndex,
     ta_element_value_pairs :: [(CPIndex, ElementValue)]
   }
+  deriving (Show)
 
 data TypeInfo
   = Type_parameter_target U1
@@ -205,6 +213,7 @@ data TypeInfo
   | Catch_target U2
   | Offset_target U2
   | Type_argument_target U2 U1
+  deriving (Show)
 
 type TypePath = [(U1, U1)]
 
@@ -222,11 +231,13 @@ data ElementValue
   | EV_class CPIndex
   | EV_anno Annotation
   | EV_array [ElementValue]
+  deriving (Show)
 
 data Annotation = Annotation
   { anno_type_index :: U2,
     anno_element_value_pairs :: [(U2, ElementValue)]
   }
+  deriving (Show)
 
 data LocalVariableType = LocalVariableType
   { lvt_start_pc :: U2,
@@ -235,6 +246,7 @@ data LocalVariableType = LocalVariableType
     lvt_sigature_index :: U2,
     lvt_index :: U2
   }
+  deriving (Show)
 
 data LocalVariable = LocalVariable
   { lv_start_pc :: U2,
@@ -243,8 +255,9 @@ data LocalVariable = LocalVariable
     lv_descriptor_index :: U2,
     lv_index :: U2
   }
+  deriving (Show)
 
-data LineNumber = LineNumber {_start_pc :: U2, _line_number :: U2}
+data LineNumber = LineNumber {_start_pc :: U2, _line_number :: U2} deriving (Show)
 
 data InnerClass = InnerClass
   { _inner_class_info_index :: CPIndex,
@@ -252,6 +265,7 @@ data InnerClass = InnerClass
     _inner_name_index :: CPIndex,
     _inner_class_access_flags :: U2
   }
+  deriving (Show)
 
 data StackMapFrame
   = Same_Frame {frame_type :: U1} -- 0-63
@@ -285,6 +299,7 @@ data StackMapFrame
         _number_of_stack_items :: U2,
         _stack :: [VerificationTypeInfo]
       }
+  deriving (Show)
 
 data VerificationTypeInfo
   = Top_variable_info -- 0
@@ -296,6 +311,7 @@ data VerificationTypeInfo
   | UninitializedThis_variable_info -- 6
   | Object_variable_info {_cpool_index :: CPIndex} -- 7
   | Uninitialized_variable_info {_offset :: U2} -- 8
+  deriving (Show)
 
 data CodeAttr = CodeAttr
   { ca_max_stack :: U2,
@@ -307,6 +323,7 @@ data CodeAttr = CodeAttr
     ca_attributes_count :: U2,
     ca_attributes :: [AttributeInfo]
   }
+  deriving (Show)
 
 data ExceptionTable = ExceptionTable
   { et_start_pc :: U2,
@@ -314,12 +331,13 @@ data ExceptionTable = ExceptionTable
     et_handler_pc :: U2,
     et_catch_type :: U2
   }
+  deriving (Show)
 
 data ClassFile = ClassFile
   { minorVersion :: U2,
     majorVersion :: U2,
     constantPool :: [CPInfo],
-    accessFlags :: ClassAccessFlag,
+    accessFlags :: U2,
     thisClass :: CPIndex,
     superClass :: CPIndex,
     interfaces :: [CPIndex],
@@ -327,6 +345,22 @@ data ClassFile = ClassFile
     methods :: [MethodInfo],
     attributes :: [AttributeInfo]
   }
+  deriving (Typeable, Show)
+
+emptyClassFile :: ClassFile
+emptyClassFile =
+  ClassFile
+    { minorVersion = 0,
+      majorVersion = 0,
+      constantPool = [],
+      accessFlags = 0,
+      thisClass = 0,
+      superClass = 0,
+      interfaces = [],
+      fields = [],
+      methods = [],
+      attributes = []
+    }
 
 javaVersion :: Word16 -> Maybe String
 javaVersion version =
@@ -375,7 +409,7 @@ instance ConstantPool [] CPInfo where
       else Nothing
   constPool :: [CPInfo] -> Int -> CPInfo
   constPool xs n = case convertIndex xs n of
-    Nothing -> error "PoolOutOfBoundsException"
+    Nothing -> error $ "PoolOutOfBoundsException: " ++ show n ++ "; " ++ show xs 
     Just idx -> xs !! idx
   constPoolWithTypeCheck :: TypeRep -> [CPInfo] -> Int -> CPInfo
   constPoolWithTypeCheck tr xs n =
