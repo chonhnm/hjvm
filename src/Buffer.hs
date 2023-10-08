@@ -3,7 +3,7 @@ module Buffer where
 import ClassFile
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.Trans.Reader (asks, ReaderT)
+import Control.Monad.Trans.Reader (ReaderT, asks)
 import Data.Binary (Get, getWord8)
 import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, lookAhead)
 import Data.Char (chr)
@@ -37,10 +37,10 @@ parseConstantPoolCount :: Get ConstantPoolCount
 parseConstantPoolCount = getWord16be
 
 -- Start parseConstantPoolInfo
-parseConstantPoolInfo :: Get ConstantPoolInfo
+parseConstantPoolInfo :: Get CPInfo
 parseConstantPoolInfo = do
   tag <- getWord8
-  cpInfo <- case tag of
+  case tag of
     1 -> parseConstantUtf8
     3 -> parseConstantInteger
     4 -> parseConstantFloat
@@ -59,7 +59,6 @@ parseConstantPoolInfo = do
     19 -> parseConstantModule
     20 -> parseConstantPackage
     _ -> fail $ "unknow constant pool tag: " ++ show (toInteger tag)
-  return $ ConstantPoolInfo tag cpInfo
 
 parseConstantUtf8 :: Get CPInfo
 parseConstantUtf8 = do
@@ -168,12 +167,6 @@ parseMethod = do
 
 parseAttributesCount :: Get U2
 parseAttributesCount = getWord16be
-
-parseAttribute :: Get AttributeInfo
-parseAttribute = undefined
-
-parseClassFile :: Get ClassFile
-parseClassFile = undefined
 
 parseConstantValue :: ClassFileReader AttrInfo
 parseConstantValue = do
@@ -688,3 +681,39 @@ parseAttributeInfo = do
   return $ AttributeInfo len attr
 
 type ClassFileReader = ReaderT ClassFile Get
+
+-- TODO
+parseAttribute :: Get AttributeInfo
+parseAttribute = undefined
+
+parseClassFile :: Get ClassFile
+parseClassFile = do
+  _ <- parseMagic
+  minorVer <- parseMinorVersion
+  majorVer <- parseMajorVersion
+  cpc <- parseConstantPoolCount
+  cp <- parseList (cpc - 1) parseConstantPoolInfo
+  accFlags <- parseAccessFlag
+  thisClass <- parseThisClass
+  superClass <- parseSuperClass
+  interfaceCount <- parseInterfacesCount
+  interfaces <- parseList interfaceCount parseInterface
+  fieldsCount <- parseFieldsCount
+  fields <- parseList fieldsCount parseField
+  methodsCount <- parseMethodsCount
+  methods <- parseList methodsCount parseMethod
+  attrCount <- parseAttributesCount
+  attrs <- parseList attrCount parseAttribute
+  return $
+    ClassFile
+      { minorVersion = minorVer,
+        majorVersion = majorVer,
+        constantPool = cp,
+        accessFlags = accFlags,
+        thisClass = thisClass,
+        superClass = superClass,
+        interfaces = interfaces,
+        fields = fields,
+        methods = methods,
+        attributes = attrs
+      }

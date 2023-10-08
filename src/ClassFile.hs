@@ -127,8 +127,7 @@ data MethodInfo = MethodInfo
 type MethodAccessFlag = U2
 
 data AttributeInfo = AttributeInfo
-  { 
-    attr_length :: U4,
+  { attr_length :: U4,
     attr_info :: AttrInfo
   }
 
@@ -317,21 +316,15 @@ data ExceptionTable = ExceptionTable
   }
 
 data ClassFile = ClassFile
-  { magic :: U4,
-    minorVersion :: U2,
+  { minorVersion :: U2,
     majorVersion :: U2,
-    constantPoolCount :: U2,
     constantPool :: [CPInfo],
     accessFlags :: ClassAccessFlag,
     thisClass :: CPIndex,
     superClass :: CPIndex,
-    inteterfacesCount :: U2,
     interfaces :: [CPIndex],
-    fieldsCount :: U2,
     fields :: [FieldInfo],
-    methodsCount :: U2,
     methods :: [MethodInfo],
-    attributesCount :: U2,
     attributes :: [AttributeInfo]
   }
 
