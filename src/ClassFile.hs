@@ -1,8 +1,9 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# HLINT ignore "Use camelCase" #-}
+{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-{-# HLINT ignore "Use camelCase" #-}
 module ClassFile where
 
 import Data.Int (Int32, Int64)
@@ -183,7 +184,7 @@ data ModuleAttr = ModuleAttr
     exports :: [(U2, U2, [U2])],
     opens :: [(U2, U2, [U2])],
     uses_index :: [U2],
-    privides :: [(U2, [U2])]
+    provides :: [(U2, [U2])]
   }
   deriving (Show)
 
@@ -409,7 +410,7 @@ instance ConstantPool [] CPInfo where
       else Nothing
   constPool :: [CPInfo] -> Int -> CPInfo
   constPool xs n = case convertIndex xs n of
-    Nothing -> error $ "PoolOutOfBoundsException: " ++ show n ++ "; " ++ show xs 
+    Nothing -> error $ "PoolOutOfBoundsException: " ++ show n ++ "; " ++ show xs
     Just idx -> xs !! idx
   constPoolWithTypeCheck :: TypeRep -> [CPInfo] -> Int -> CPInfo
   constPoolWithTypeCheck tr xs n =
@@ -420,3 +421,5 @@ instance ConstantPool [] CPInfo where
   constUtf8 cp n = let Constant_Utf8 x = constPool cp n in x
   constInteger cp n = let Constant_Integer x = constPool cp n in x
   constFloat cp n = let Constant_Float x = constPool cp n in x
+  constLong cp n = let Constant_Long x = constPool cp n in x
+  constDouble cp n = let Constant_Double x = constPool cp n in x

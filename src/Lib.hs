@@ -1,13 +1,9 @@
-module Lib(someFunc) where
+module Lib (someFunc) where
 
-import Parser
-import Buffer
-import ClassFile
-import Test ( parseReader )
+import Buffer (runParseClassFile)
 
 someFunc :: IO ()
 someFunc = do
-    -- parseFile "HelloWorld.class"
-    -- parseFileDirect "HelloWorld.class"
-    runParseClassFile "HelloWorld.class"
-
+  -- parseFile "HelloWorld.class"
+  -- parseFileDirect "HelloWorld.class"
+  runParseClassFile "HelloWorld.class"

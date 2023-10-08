@@ -1,11 +1,12 @@
 module Buffer where
 
 import ClassFile
+import ClassFileChecker (checkAttrLength)
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local)
 import Data.Binary (Get, getWord8)
-import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, isEmpty, lookAhead, runGet)
+import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, isEmpty, runGet)
 import Data.ByteString.Lazy as BL hiding (elem)
 import Data.Char (chr)
 import Data.Text as T hiding (elem)
@@ -171,13 +172,11 @@ parseAttributesCount = getWord16be
 
 parseConstantValue :: ClassFileReader AttrInfo
 parseConstantValue = do
-  len <- lift getWord32be
-  idx <- assert (len == 2) $ lift getWord16be
+  idx <- lift getWord16be
   return $ ConstantValue idx
 
 parseCode :: ClassFileReader AttrInfo
 parseCode = do
-  len <- lift getWord32be
   maxStack <- lift getWord16be
   maxLocals <- lift getWord16be
   codeLength <- lift getWord32be
@@ -208,7 +207,6 @@ parseExceptionTable = do
 
 parseStackMapTable :: ClassFileReader AttrInfo
 parseStackMapTable = do
-  len <- lift getWord32be
   numberOfEntries <- lift getWord16be
   entries <- parseList numberOfEntries parseStackMapFrame
   return $ StackMapTable entries
@@ -257,14 +255,12 @@ parseVerificationTypeInfo = do
 
 parseExceptions :: ClassFileReader AttrInfo
 parseExceptions = do
-  len <- lift getWord32be
   noe <- lift getWord16be
   eit <- parseList noe $ lift getWord16be
   return $ Exceptions eit
 
 parseInnerClasses :: ClassFileReader AttrInfo
 parseInnerClasses = do
-  len <- lift getWord32be
   noc <- lift getWord16be
   classes <- parseList noc parseInnerClass
   return $ InnerClasses classes
@@ -279,37 +275,30 @@ parseInnerClass = do
 
 parseEnclosingMethod :: ClassFileReader AttrInfo
 parseEnclosingMethod = do
-  len <- lift getWord32be
-  ci <- assert (len == 4) $ lift getWord16be
+  ci <- lift getWord16be
   mi <- lift getWord16be
   return $ EnclosingMethod ci mi
 
 parseSynthetic :: ClassFileReader AttrInfo
-parseSynthetic = do
-  len <- lift getWord32be
-  assert (len == 0) $ return Synthetic
+parseSynthetic = return Synthetic
 
 parseSignature :: ClassFileReader AttrInfo
 parseSignature = do
-  len <- lift getWord32be
-  si <- assert (len == 2) $ lift getWord16be
+  si <- lift getWord16be
   return $ Signature si
 
 parseSourceFile :: ClassFileReader AttrInfo
 parseSourceFile = do
-  len <- lift getWord32be
-  si <- assert (len == 2) $ lift getWord16be
+  si <- lift getWord16be
   return $ SourceFile si
 
-parseSourceDebugExtension :: ClassFileReader AttrInfo
-parseSourceDebugExtension = do
-  len <- lift getWord32be
+parseSourceDebugExtension :: U4 -> ClassFileReader AttrInfo
+parseSourceDebugExtension len = do
   de <- parseList len $ lift getWord8
   return $ SourceDebugExtension de
 
 parseLineNumberTalbe :: ClassFileReader AttrInfo
 parseLineNumberTalbe = do
-  len <- lift getWord32be
   lntl <- lift getWord16be
   lnt <-
     parseList
@@ -323,7 +312,6 @@ parseLineNumberTalbe = do
 
 parseLocalVariableTable :: ClassFileReader AttrInfo
 parseLocalVariableTable = do
-  len <- lift getWord32be
   lvtl <- lift getWord16be
   lvt <- parseList lvtl parseLocalVariable
   return $ LocalVariableTable lvt
@@ -339,7 +327,6 @@ parseLocalVariable = do
 
 parseLocalVariableTypeTable :: ClassFileReader AttrInfo
 parseLocalVariableTypeTable = do
-  len <- lift getWord32be
   lvttl <- lift getWord16be
   lvtt <- parseList lvttl parseLocalVariableType
   return $ LocalVariableTypeTable lvtt
@@ -354,13 +341,10 @@ parseLocalVariableType = do
   return $ LocalVariableType sp len ni si idx
 
 parseDeprecated :: ClassFileReader AttrInfo
-parseDeprecated = do
-  len <- lift getWord16be
-  assert (len == 0) $ return Deprecated
+parseDeprecated = return Deprecated
 
 parseRuntimeVisibleAnnotations :: ClassFileReader AttrInfo
 parseRuntimeVisibleAnnotations = do
-  len <- lift getWord32be
   na <- lift getWord16be
   annos <- parseList na parseAnnotation
   return $ RuntimeInvisibleAnnotations annos
@@ -404,14 +388,12 @@ parseElementValue = do
 
 parseRuntimeInvisibleAnnotations :: ClassFileReader AttrInfo
 parseRuntimeInvisibleAnnotations = do
-  len <- lift getWord32be
   na <- lift getWord16be
   annos <- parseList na parseAnnotation
   return $ RuntimeInvisibleAnnotations annos
 
 parseRuntimeVisibleParameterAnnotations :: ClassFileReader AttrInfo
 parseRuntimeVisibleParameterAnnotations = do
-  len <- lift getWord32be
   np <- lift getWord8
   pa <-
     parseList
@@ -424,7 +406,6 @@ parseRuntimeVisibleParameterAnnotations = do
 
 parseRuntimeInvisibleParameterAnnotations :: ClassFileReader AttrInfo
 parseRuntimeInvisibleParameterAnnotations = do
-  len <- lift getWord32be
   np <- lift getWord8
   pa <-
     parseList
@@ -437,7 +418,6 @@ parseRuntimeInvisibleParameterAnnotations = do
 
 parseRuntimeVisibleTypeAnnotations :: ClassFileReader AttrInfo
 parseRuntimeVisibleTypeAnnotations = do
-  len <- lift getWord32be
   na <- lift getWord16be
   annos <- parseList na parseTypeAnnotation
   return $ RuntimeVisibleTypeAnnotations annos
@@ -491,19 +471,15 @@ parseTypeAnnotation = do
 
 parseRuntimeInvisibleTypeAnnotations :: ClassFileReader AttrInfo
 parseRuntimeInvisibleTypeAnnotations = do
-  len <- lift getWord32be
   na <- lift getWord16be
   annos <- parseList na parseTypeAnnotation
   return $ RuntimeInvisibleTypeAnnotations annos
 
 parseAnnotationDefault :: ClassFileReader AttrInfo
-parseAnnotationDefault = do
-  len <- lift getWord32be
-  AnnotationDefault <$> parseElementValue
+parseAnnotationDefault = AnnotationDefault <$> parseElementValue
 
 parseBootstrapMethods :: ClassFileReader AttrInfo
 parseBootstrapMethods = do
-  len <- lift getWord32be
   nbm <- lift getWord16be
   bm <- parseList nbm parseBootstrapMethod
   return $ BootstrapMethods bm
@@ -517,7 +493,6 @@ parseBootstrapMethod = do
 
 parseMethodParameters :: ClassFileReader AttrInfo
 parseMethodParameters = do
-  len <- lift getWord32be
   pc <- lift getWord8
   ps <-
     parseList
@@ -531,12 +506,11 @@ parseMethodParameters = do
 
 parseModule :: ClassFileReader AttrInfo
 parseModule = do
-  len <- lift getWord32be
   moduleNameIndex <- lift getWord16be
   moduleFlags <- lift getWord16be
   moduleVersionIndex <- lift getWord16be
   requiresCount <- lift getWord16be
-  requires <-
+  reqs <-
     parseList
       requiresCount
       ( do
@@ -546,7 +520,7 @@ parseModule = do
           return (ri, rf, rvi)
       )
   exportsCount <- lift getWord16be
-  exports <-
+  eps <-
     parseList
       exportsCount
       ( do
@@ -557,7 +531,7 @@ parseModule = do
           return (ei, ef, eti)
       )
   opensCount <- lift getWord16be
-  opens <-
+  ops <-
     parseList
       opensCount
       ( do
@@ -570,7 +544,7 @@ parseModule = do
   usesCount <- lift getWord16be
   usesIndex <- parseList usesCount (lift getWord16be)
   providesCount <- lift getWord16be
-  provides <-
+  prd <-
     parseList
       providesCount
       ( do
@@ -583,44 +557,39 @@ parseModule = do
     Module
       ModuleAttr
         { uses_index = usesIndex,
-          requires = requires,
-          privides = provides,
-          opens = opens,
+          requires = reqs,
+          provides = prd,
+          opens = ops,
           module_version_index = moduleVersionIndex,
           module_name_index = moduleNameIndex,
           module_flags = moduleFlags,
-          exports = exports
+          exports = eps
         }
 
 parseModulePackages :: ClassFileReader AttrInfo
 parseModulePackages = do
-  len <- lift getWord32be
   pc <- lift getWord16be
   pis <- parseList pc (lift getWord16be)
   return $ ModulePackages pis
 
 parseModuleMainClass :: ClassFileReader AttrInfo
 parseModuleMainClass = do
-  len <- lift getWord32be
-  mci <- assert (len == 2) lift getWord16be
+  mci <- lift getWord16be
   return $ ModuleMainClass mci
 
 parseNestHost :: ClassFileReader AttrInfo
 parseNestHost = do
-  len <- lift getWord32be
-  hci <- assert (len == 2) lift getWord16be
+  hci <- lift getWord16be
   return $ NestHost hci
 
 parseNestMembers :: ClassFileReader AttrInfo
 parseNestMembers = do
-  len <- lift getWord32be
   noc <- lift getWord16be
   cls <- parseList noc (lift getWord16be)
   return $ NestMembers cls
 
 parseRecord :: ClassFileReader AttrInfo
 parseRecord = do
-  len <- lift getWord32be
   cc <- lift getWord16be
   comps <- parseList cc parseRecordComponentInfo
   return $ Record comps
@@ -635,7 +604,6 @@ parseRecordComponentInfo = do
 
 parsePermittedSubclasses :: ClassFileReader AttrInfo
 parsePermittedSubclasses = do
-  len <- lift getWord32be
   noc <- lift getWord16be
   cls <- parseList noc (lift getWord16be)
   return $ PermittedSubclasses cls
@@ -644,7 +612,7 @@ parseAttributeInfo :: ClassFileReader AttributeInfo
 parseAttributeInfo = do
   cp <- asks constantPool
   attrNameIdx <- lift getWord16be
-  len <- lift $ lookAhead getWord32be
+  len <- lift getWord32be
   let ConstantUtf8 attrTag = constUtf8 cp (fromIntegral attrNameIdx)
   let str = T.unpack attrTag
   attr <- case str of
@@ -657,7 +625,7 @@ parseAttributeInfo = do
     "Synthetic" -> parseSynthetic
     "Signature" -> parseSignature
     "SourceFile" -> parseSourceFile
-    "SourceDebugExtension" -> parseSourceDebugExtension
+    "SourceDebugExtension" -> parseSourceDebugExtension len
     "LineNumberTable" -> parseLineNumberTalbe
     "LocalVariableTable" -> parseLocalVariableTable
     "LocalVariableTypeTable" -> parseLocalVariableTypeTable
@@ -691,10 +659,10 @@ parseClassFile = do
   cpc <- lift parseConstantPoolCount
   cp <- parseList (cpc - 1) $ lift parseConstantPoolInfo
   accFlags <- lift parseAccessFlag
-  thisClass <- lift parseThisClass
-  superClass <- lift parseSuperClass
+  thisClazz <- lift parseThisClass
+  superClazz <- lift parseSuperClass
   interfaceCount <- lift parseInterfacesCount
-  interfaces <- parseList interfaceCount $ lift parseInterface
+  ifs <- parseList interfaceCount $ lift parseInterface
   fieldsCount <- lift parseFieldsCount
   etpClazz <- ask
   let initClass =
@@ -703,15 +671,15 @@ parseClassFile = do
             majorVersion = majorVer,
             constantPool = cp,
             accessFlags = accFlags,
-            thisClass = thisClass,
-            superClass = superClass,
-            interfaces = interfaces
+            thisClass = thisClazz,
+            superClass = superClazz,
+            interfaces = ifs
           }
-  fields <- parseList fieldsCount (local (const initClass) parseField)
+  fds <- parseList fieldsCount (local (const initClass) parseField)
   methodsCount <- lift parseMethodsCount
-  methods <- parseList methodsCount (local (const initClass {fields = fields}) parseMethod)
+  mds <- parseList methodsCount (local (const initClass {fields = fds}) parseMethod)
   attrCount <- lift parseAttributesCount
-  attrs <- parseList attrCount (local (const initClass {fields = fields, methods = methods}) parseAttributeInfo)
+  attrs <- parseList attrCount (local (const initClass {fields = fds, methods = mds}) parseAttributeInfo)
   ept <- lift isEmpty
   assert ept return $
     ClassFile
@@ -719,16 +687,28 @@ parseClassFile = do
         majorVersion = majorVer,
         constantPool = cp,
         accessFlags = accFlags,
-        thisClass = thisClass,
-        superClass = superClass,
-        interfaces = interfaces,
-        fields = fields,
-        methods = methods,
+        thisClass = thisClazz,
+        superClass = superClazz,
+        interfaces = ifs,
+        fields = fds,
+        methods = mds,
         attributes = attrs
       }
 
 runParseClassFile :: FilePath -> IO ()
 runParseClassFile file = do
   input <- BL.readFile file
-  let clazz = runGet (runReaderT parseClassFile emptyClassFile) input
-  print  "classfile: ok!"
+  let cf = loadClassFile input
+  case cf of
+    Left err -> print $ err ++ ".."
+    Right _ -> print "classfile: ok!"
+
+type Err = String
+
+loadClassFile :: ByteString -> Either Err ClassFile
+loadClassFile file =
+  let cf = runGet (runReaderT parseClassFile emptyClassFile) file
+      err = checkAttrLength cf
+   in case err of
+        Nothing -> Right cf
+        Just str -> Left str
