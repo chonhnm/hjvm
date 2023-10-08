@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use lambda-case" #-}
-module ClassFileChecker(checkAttrLength) where
+module ClassFileChecker (checkAttrLength) where
 
 import ClassFile
 import Data.Typeable (typeOf)
@@ -19,7 +19,7 @@ instance AttrInfoLen AttributeInfo where
 instance AttrInfoLen AttrInfo where
   attrLen (ConstantValue _) = 2
   attrLen (Code (CodeAttr _ _ codeLen _ expLen _ _ attr)) =
-    8 + codeLen + fromIntegral expLen * 8 + sum (map attrLen attr)
+    12 + codeLen + fromIntegral expLen * 8 + sum (map attrLen attr)
   attrLen (StackMapTable _) = 0
   attrLen (Exceptions xs) = 2 + 2 * fromIntegral (length xs)
   attrLen (InnerClasses xs) = 2 + 8 * fromIntegral (length xs)
@@ -90,12 +90,15 @@ checkAttrLength cf =
         safeHead
           $ filter
             ( \msg -> case msg of
-                Nothing -> False
-                Just _ -> True
+                (Nothing, _) -> False
+                (Just _, _) -> True
             )
-            . map checkLength
+            . map (\attr -> (checkLength attr, attr))
           $ concat fxss ++ concat mxss ++ xs
-   in err
+   in case err of
+        Nothing -> Nothing
+        Just (Just str, attr) -> Just (str ++ ";attr:" ++ show attr)
+        Just _ -> error $ "Unexpected: " ++ show err
   where
     safeHead [] = Nothing
-    safeHead (x : _) = x
+    safeHead (x : _) = Just x
