@@ -190,11 +190,8 @@ parseCode = do
       CodeAttr
         { ca_max_stack = maxStack,
           ca_max_locals = maxLocals,
-          ca_code_length = codeLength,
           ca_code = code,
-          ca_exception_table_length = etl,
           ca_exception_table = et,
-          ca_attributes_count = ac,
           ca_attributes = attrs
         }
 

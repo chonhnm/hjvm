@@ -317,11 +317,8 @@ data VerificationTypeInfo
 data CodeAttr = CodeAttr
   { ca_max_stack :: U2,
     ca_max_locals :: U2,
-    ca_code_length :: U4,
     ca_code :: [U1],
-    ca_exception_table_length :: U2,
     ca_exception_table :: [ExceptionTable],
-    ca_attributes_count :: U2,
     ca_attributes :: [AttributeInfo]
   }
   deriving (Show)

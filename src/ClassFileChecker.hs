@@ -18,8 +18,8 @@ instance AttrInfoLen AttributeInfo where
 
 instance AttrInfoLen AttrInfo where
   attrLen (ConstantValue _) = 2
-  attrLen (Code (CodeAttr _ _ codeLen _ expLen _ _ attr)) =
-    12 + codeLen + fromIntegral expLen * 8 + sum (map attrLen attr)
+  attrLen (Code (CodeAttr _ _ codes ets attrs)) =
+    12 + fromIntegral (length codes) + fromIntegral (length ets) * 8 + sum (map attrLen attrs)
   attrLen (StackMapTable _) = 0
   attrLen (Exceptions xs) = 2 + 2 * fromIntegral (length xs)
   attrLen (InnerClasses xs) = 2 + 8 * fromIntegral (length xs)
