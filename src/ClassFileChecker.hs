@@ -6,6 +6,7 @@ module ClassFileChecker (checkAttrLength) where
 import ClassFile
 import Data.Typeable (typeOf)
 import Text.Printf (printf)
+import Util
 
 class AttrInfoLen a where
   attrLen :: a -> U4

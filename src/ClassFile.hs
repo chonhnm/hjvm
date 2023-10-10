@@ -9,16 +9,9 @@ module ClassFile where
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
 import Data.Typeable (TypeRep, Typeable, typeOf)
-import Data.Word (Word16, Word32, Word64, Word8)
 import Numeric (showHex)
-
-type U1 = Word8
-
-type U2 = Word16
-
-type U4 = Word32
-
-type U8 = Word64
+import Text.Printf (printf)
+import Util
 
 type Version = (U2, U2, String)
 
@@ -360,7 +353,7 @@ emptyClassFile =
       attributes = []
     }
 
-javaVersion :: Word16 -> Maybe String
+javaVersion :: U2 -> Maybe String
 javaVersion version =
   case version of
     45 -> Just "1.0.2"
@@ -386,37 +379,32 @@ javaVersion version =
     65 -> Just "21"
     _ -> Nothing
 
-class Seq s where
-  fetch :: s a -> U2 -> Maybe a
-
 class ConstantPool s a where
-  convertIndex :: s a -> Int -> Maybe Int
-  constPool :: s a -> Int -> a
-  constPoolWithTypeCheck :: TypeRep -> s a -> Int -> CPInfo
-  constUtf8 :: s a -> Int -> ConstantUtf8
-  constInteger :: s a -> Int -> ConstantInteger
-  constFloat :: s a -> Int -> ConstantFloat
-  constLong :: s a -> Int -> ConstantLong
-  constDouble :: s a -> Int -> ConstantDouble
+  cpSafeIndex :: s a -> U2 -> Maybe U2
+  cpElement :: s a -> U2 -> MyErr a
+  cpCheckType :: s a -> U2 -> TypeRep -> MyErr ()
+  cpUtf8 :: s a -> U2 -> MyErr ConstantUtf8
 
 instance ConstantPool [] CPInfo where
-  convertIndex :: [CPInfo] -> Int -> Maybe Int
-  convertIndex xs n =
-    if n > 0 && n <= length xs
+  cpSafeIndex xs n =
+    if n > 0 && n <= fromIntegral (length xs)
       then Just (n - 1)
       else Nothing
-  constPool :: [CPInfo] -> Int -> CPInfo
-  constPool xs n = case convertIndex xs n of
-    Nothing -> error $ "PoolOutOfBoundsException: " ++ show n ++ "; " ++ show xs
-    Just idx -> xs !! idx
-  constPoolWithTypeCheck :: TypeRep -> [CPInfo] -> Int -> CPInfo
-  constPoolWithTypeCheck tr xs n =
-    let cp = constPool xs n
+  cpElement xs n = case cpSafeIndex xs n of
+    Nothing -> Left $ PE $ PoolOutOfBoundsException $ T.pack (show n ++ "; " ++ show xs)
+    Just idx -> Right $ xs !! fromIntegral idx
+  cpCheckType xs n tr =
+    let cp = cpElement xs n
      in if typeOf cp == tr
-          then cp
-          else error "PoolUnmatchedType"
-  constUtf8 cp n = let Constant_Utf8 x = constPool cp n in x
-  constInteger cp n = let Constant_Integer x = constPool cp n in x
-  constFloat cp n = let Constant_Float x = constPool cp n in x
-  constLong cp n = let Constant_Long x = constPool cp n in x
-  constDouble cp n = let Constant_Double x = constPool cp n in x
+          then Right ()
+          else
+            Left $
+              PE $
+                PoolUnmatchedType $
+                  T.pack $
+                    printf "Expected: %s, Actual: %s." (show tr) (show $ typeOf cp)
+  cpUtf8 cp n = do
+    info <- cpElement cp n
+    case info of
+      Constant_Utf8 x -> Right x
+      _ -> Left $ PE $ PoolUnmatchedType $ T.pack $ "Expected: Constant_Utf8, Actual" ++ show info

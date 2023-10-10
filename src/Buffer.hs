@@ -2,9 +2,10 @@ module Buffer where
 
 import ClassFile
 import ClassFileChecker (checkAttrLength)
+import ClassFileParser (ClassFileParser (getMajorVersion))
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local)
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local, withReaderT)
 import Data.Binary (Get, getWord8)
 import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, isEmpty, runGet)
 import Data.ByteString.Lazy as BL hiding (elem)
@@ -25,7 +26,14 @@ parseMinorVersion :: Get U2
 parseMinorVersion = getWord16be
 
 parseMajorVersion :: Get U2
-parseMajorVersion = getWord16be
+parseMajorVersion = do
+  major <- getWord16be
+  if major < java_min_support_version
+    then error $ "Unknown major version: " ++ show major
+    else
+      if major > jvm_classfile_major_version
+        then error $ "UnSupported major version: " ++ show major
+        else return major
 
 parseVersion :: Get Version
 parseVersion = do
@@ -39,21 +47,21 @@ parseConstantPoolCount :: Get ConstantPoolCount
 parseConstantPoolCount = getWord16be
 
 -- Start parseConstantPoolInfo
-parseConstantPoolInfo :: Get CPInfo
+parseConstantPoolInfo :: MajorVersionReader CPInfo
 parseConstantPoolInfo = do
-  tag <- getWord8
+  tag <- lift getWord8
   case tag of
-    1 -> parseConstantUtf8
-    3 -> parseConstantInteger
-    4 -> parseConstantFloat
-    5 -> parseConstantLong
-    6 -> parseConstantDouble
-    7 -> parseConstantClass
-    8 -> parseConstantString
-    9 -> parseConstantFieldref
-    10 -> parseConstantMethodref
-    11 -> parseConstantInterfaceMethodref
-    12 -> parseConstantNameAndType
+    1 -> lift parseConstantUtf8
+    3 -> lift parseConstantInteger
+    4 -> lift parseConstantFloat
+    5 -> lift parseConstantLong
+    6 -> lift parseConstantDouble
+    7 -> lift parseConstantClass
+    8 -> lift parseConstantString
+    9 -> lift parseConstantFieldref
+    10 -> lift parseConstantMethodref
+    11 -> lift parseConstantInterfaceMethodref
+    12 -> lift parseConstantNameAndType
     15 -> parseConstantMethodHandle
     16 -> parseConstantMethodType
     17 -> parseConstantDynamic
@@ -99,25 +107,36 @@ parseConstantInterfaceMethodref = liftM2 Constant_InterfaceMethodref getWord16be
 parseConstantNameAndType :: Get CPInfo
 parseConstantNameAndType = liftM2 Constant_NameAndType getWord16be getWord16be
 
-parseConstantMethodHandle :: Get CPInfo
+parseConstantMethodHandle :: MajorVersionReader CPInfo
 parseConstantMethodHandle = do
-  kind <- getWord8
-  Constant_MethodHandle (toEnum $ fromIntegral kind) <$> getWord16be
+  major <- ask
+  kind <- assert (major >= java_7_version) lift getWord8
+  Constant_MethodHandle (toEnum $ fromIntegral kind) <$> lift getWord16be
 
-parseConstantMethodType :: Get CPInfo
-parseConstantMethodType = Constant_MethodType <$> getWord16be
+parseConstantMethodType :: MajorVersionReader CPInfo
+parseConstantMethodType = do
+  major <- ask
+  assert (major >= java_7_version) Constant_MethodType <$> lift getWord16be
 
-parseConstantDynamic :: Get CPInfo
-parseConstantDynamic = liftM2 Constant_Dynamic getWord16be getWord16be
+parseConstantDynamic :: MajorVersionReader CPInfo
+parseConstantDynamic = do
+  major <- ask
+  assert (major >= java_11_version) liftM2 Constant_Dynamic (lift getWord16be) (lift getWord16be)
 
-parseConstantInvokeDynamic :: Get CPInfo
-parseConstantInvokeDynamic = liftM2 Constant_InvokeDynamic getWord16be getWord16be
+parseConstantInvokeDynamic :: MajorVersionReader CPInfo
+parseConstantInvokeDynamic = do
+  major <- ask
+  assert (major >= java_7_version) liftM2 Constant_InvokeDynamic (lift getWord16be) (lift getWord16be)
 
-parseConstantModule :: Get CPInfo
-parseConstantModule = Constant_Module <$> getWord16be
+parseConstantModule :: MajorVersionReader CPInfo
+parseConstantModule = do
+  major <- ask
+  assert (major >= java_9_version) Constant_Module <$> lift getWord16be
 
-parseConstantPackage :: Get CPInfo
-parseConstantPackage = Constant_Module <$> getWord16be
+parseConstantPackage :: MajorVersionReader CPInfo
+parseConstantPackage = do
+  major <- ask
+  assert (major >= java_9_version) Constant_Module <$> lift getWord16be
 
 -- End parseConstantPoolInfo
 parseAccessFlag :: Get U2
@@ -610,43 +629,50 @@ parseAttributeInfo = do
   cp <- asks constantPool
   attrNameIdx <- lift getWord16be
   len <- lift getWord32be
-  let ConstantUtf8 attrTag = constUtf8 cp (fromIntegral attrNameIdx)
-  let str = T.unpack attrTag
-  attr <- case str of
-    "ConstantValue" -> parseConstantValue
-    "Code" -> parseCode
-    "StackMapTable" -> parseStackMapTable
-    "Exceptions" -> parseExceptions
-    "InnerClasses" -> parseInnerClasses
-    "EnclosingMethod" -> parseEnclosingMethod
-    "Synthetic" -> parseSynthetic
-    "Signature" -> parseSignature
-    "SourceFile" -> parseSourceFile
-    "SourceDebugExtension" -> parseSourceDebugExtension len
-    "LineNumberTable" -> parseLineNumberTalbe
-    "LocalVariableTable" -> parseLocalVariableTable
-    "LocalVariableTypeTable" -> parseLocalVariableTypeTable
-    "Deprecated" -> parseDeprecated
-    "RuntimeVisibleAnnotations" -> parseRuntimeVisibleAnnotations
-    "RuntimeInvisibleAnnotations" -> parseRuntimeInvisibleAnnotations
-    "RuntimeVisibleParameterAnnotations" -> parseRuntimeVisibleParameterAnnotations
-    "RuntimeInvisibleParameterAnnotations" -> parseRuntimeInvisibleParameterAnnotations
-    "RuntimeVisibleTypeAnnotations" -> parseRuntimeVisibleTypeAnnotations
-    "RuntimeInvisibleTypeAnnotations" -> parseRuntimeInvisibleTypeAnnotations
-    "AnnotationDefault" -> parseAnnotationDefault
-    "BootstrapMethods" -> parseBootstrapMethods
-    "MethodParameters" -> parseMethodParameters
-    "Module" -> parseModule
-    "ModulePackages" -> parseModulePackages
-    "ModuleMainClass" -> parseModuleMainClass
-    "NestHost" -> parseNestHost
-    "NestMembers" -> parseNestMembers
-    "Record" -> parseRecord
-    "PermittedSubclasses" -> parsePermittedSubclasses
-    _ -> error $ "Unspported attribute: " ++ str
-  return $ AttributeInfo len attr
+  let maybeAttrTag = cpUtf8 cp attrNameIdx
+  case maybeAttrTag of
+    Left err -> error $ show err
+    Right (ConstantUtf8 attrTag) -> do
+      let str = T.unpack attrTag
+      attr <- case str of
+        "ConstantValue" -> parseConstantValue
+        "Code" -> parseCode
+        "StackMapTable" -> parseStackMapTable
+        "Exceptions" -> parseExceptions
+        "InnerClasses" -> parseInnerClasses
+        "EnclosingMethod" -> parseEnclosingMethod
+        "Synthetic" -> parseSynthetic
+        "Signature" -> parseSignature
+        "SourceFile" -> parseSourceFile
+        "SourceDebugExtension" -> parseSourceDebugExtension len
+        "LineNumberTable" -> parseLineNumberTalbe
+        "LocalVariableTable" -> parseLocalVariableTable
+        "LocalVariableTypeTable" -> parseLocalVariableTypeTable
+        "Deprecated" -> parseDeprecated
+        "RuntimeVisibleAnnotations" -> parseRuntimeVisibleAnnotations
+        "RuntimeInvisibleAnnotations" -> parseRuntimeInvisibleAnnotations
+        "RuntimeVisibleParameterAnnotations" -> parseRuntimeVisibleParameterAnnotations
+        "RuntimeInvisibleParameterAnnotations" -> parseRuntimeInvisibleParameterAnnotations
+        "RuntimeVisibleTypeAnnotations" -> parseRuntimeVisibleTypeAnnotations
+        "RuntimeInvisibleTypeAnnotations" -> parseRuntimeInvisibleTypeAnnotations
+        "AnnotationDefault" -> parseAnnotationDefault
+        "BootstrapMethods" -> parseBootstrapMethods
+        "MethodParameters" -> parseMethodParameters
+        "Module" -> parseModule
+        "ModulePackages" -> parseModulePackages
+        "ModuleMainClass" -> parseModuleMainClass
+        "NestHost" -> parseNestHost
+        "NestMembers" -> parseNestMembers
+        "Record" -> parseRecord
+        "PermittedSubclasses" -> parsePermittedSubclasses
+        _ -> error $ "Unspported attribute: " ++ str
+      return $ AttributeInfo len attr
 
 type ClassFileReader = ReaderT ClassFile Get
+
+type MajorVersion = U2
+
+type MajorVersionReader = ReaderT MajorVersion Get
 
 parseClassFile :: ClassFileReader ClassFile
 parseClassFile = do
@@ -654,7 +680,7 @@ parseClassFile = do
   minorVer <- lift parseMinorVersion
   majorVer <- lift parseMajorVersion
   cpc <- lift parseConstantPoolCount
-  cp <- parseList (cpc - 1) $ lift parseConstantPoolInfo
+  cp <- parseList (cpc - 1) $ withReaderT getMajorVersion parseConstantPoolInfo
   accFlags <- lift parseAccessFlag
   thisClazz <- lift parseThisClass
   superClazz <- lift parseSuperClass
