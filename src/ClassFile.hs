@@ -391,7 +391,7 @@ instance ConstantPool [] CPInfo where
       then Just (n - 1)
       else Nothing
   cpElement xs n = case cpSafeIndex xs n of
-    Nothing -> Left $ PE $ PoolOutOfBoundsException $ T.pack (show n ++ "; " ++ show xs)
+    Nothing -> Left $ PE $ PoolOutOfBoundsException $ show n ++ "; " ++ show xs
     Just idx -> Right $ xs !! fromIntegral idx
   cpCheckType xs n tr =
     let cp = cpElement xs n
@@ -401,10 +401,9 @@ instance ConstantPool [] CPInfo where
             Left $
               PE $
                 PoolUnmatchedType $
-                  T.pack $
-                    printf "Expected: %s, Actual: %s." (show tr) (show $ typeOf cp)
+                  printf "Expected: %s, Actual: %s." (show tr) (show $ typeOf cp)
   cpUtf8 cp n = do
     info <- cpElement cp n
     case info of
       Constant_Utf8 x -> Right x
-      _ -> Left $ PE $ PoolUnmatchedType $ T.pack $ "Expected: Constant_Utf8, Actual" ++ show info
+      _ -> Left $ PE $ PoolUnmatchedType $ "Expected: Constant_Utf8, Actual" ++ show info

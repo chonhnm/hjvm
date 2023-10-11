@@ -19,15 +19,15 @@ decodeUtf8Jvm = decodeUtf8
 
 data AppErr = PE ParseError 
  | RE RuntimeError 
- | ClassFormatError Text
+ | ClassFormatError String
  deriving (Show)
 
 data ParseError
-  = PoolOutOfBoundsException Text
-  | PoolUnmatchedType Text
+  = PoolOutOfBoundsException String
+  | PoolUnmatchedType String
   | NonExausted
   deriving (Show)
 
-data RuntimeError = OutOfBound Text | ServerError Text deriving (Show)
+data RuntimeError = OutOfBound String | ServerError String deriving (Show)
 
 type MyErr = Either AppErr
