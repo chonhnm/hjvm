@@ -17,10 +17,12 @@ import Data.Text.Encoding (decodeUtf8)
 decodeUtf8Jvm :: B.ByteString -> Text
 decodeUtf8Jvm = decodeUtf8
 
-data AppErr = PE ParseError 
- | RE RuntimeError 
- | ClassFormatError String
- deriving (Show)
+data AppErr
+  = PE ParseError
+  | RE RuntimeError
+  | ClassFormatError String
+  | UnknownErr String
+  deriving (Show)
 
 data ParseError
   = PoolOutOfBoundsException String

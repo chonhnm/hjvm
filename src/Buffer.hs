@@ -74,20 +74,20 @@ parseConstantUtf8 :: Get CPInfo
 parseConstantUtf8 = do
   len <- getWord16be
   str <- getByteString $ fromIntegral len
-  return $ (Constant_Utf8 . ConstantUtf8) (decodeUtf8Jvm str)
+  return $ Constant_Utf8 $ decodeUtf8Jvm str
 
 parseConstantInteger :: Get CPInfo
-parseConstantInteger = Constant_Integer . ConstantInteger <$> getInt32be
+parseConstantInteger = Constant_Integer <$> getInt32be
 
 parseConstantFloat :: Get CPInfo
-parseConstantFloat = Constant_Float . ConstantFloat <$> getFloatbe
+parseConstantFloat = Constant_Float <$> getFloatbe
 
 -- TODO: Long and Double take up two entries in the constant_pool table
 parseConstantLong :: Get CPInfo
-parseConstantLong = Constant_Long . ConstantLong <$> getInt64be
+parseConstantLong = Constant_Long <$> getInt64be
 
 parseConstantDouble :: Get CPInfo
-parseConstantDouble = Constant_Double . ConstantDouble <$> getDoublebe
+parseConstantDouble = Constant_Double <$> getDoublebe
 
 parseConstantClass :: Get CPInfo
 parseConstantClass = Constant_Class <$> getWord16be
@@ -632,7 +632,7 @@ parseAttributeInfo = do
   let maybeAttrTag = cpUtf8 cp attrNameIdx
   case maybeAttrTag of
     Left err -> error $ show err
-    Right (ConstantUtf8 attrTag) -> do
+    Right attrTag -> do
       let str = T.unpack attrTag
       attr <- case str of
         "ConstantValue" -> parseConstantValue

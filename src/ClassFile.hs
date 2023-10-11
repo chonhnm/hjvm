@@ -27,11 +27,11 @@ type AttrIndex = U2
 type CPIndex = U2
 
 data CPInfo
-  = Constant_Utf8 ConstantUtf8
-  | Constant_Integer ConstantInteger
-  | Constant_Float ConstantFloat
-  | Constant_Long ConstantLong
-  | Constant_Double ConstantDouble
+  = Constant_Utf8 T.Text
+  | Constant_Integer Int32
+  | Constant_Float Float
+  | Constant_Long Int64
+  | Constant_Double Double
   | Constant_Class {_name_index :: CPIndex}
   | Constant_String {_string_index :: CPIndex}
   | Constant_Fieldref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
@@ -45,16 +45,6 @@ data CPInfo
   | Constant_Module {_name_index :: CPIndex}
   | Constant_Package {_name_index :: CPIndex}
   deriving (Typeable, Show)
-
-newtype ConstantUtf8 = ConstantUtf8 T.Text deriving (Show)
-
-newtype ConstantInteger = ConstantInteger Int32 deriving (Show)
-
-newtype ConstantFloat = ConstantFloat Float deriving (Show)
-
-newtype ConstantLong = ConstantLong Int64 deriving (Show)
-
-newtype ConstantDouble = ConstantDouble Double deriving (Show)
 
 data ReferenceKind
   = REF_none -- 0
@@ -382,8 +372,8 @@ javaVersion version =
 class ConstantPool s a where
   cpSafeIndex :: s a -> U2 -> Maybe U2
   cpElement :: s a -> U2 -> MyErr a
-  cpCheckType :: s a -> U2 -> TypeRep -> MyErr ()
-  cpUtf8 :: s a -> U2 -> MyErr ConstantUtf8
+  cpCheckType :: TypeRep -> s a -> U2 -> MyErr a
+  cpUtf8 :: s a -> U2 -> MyErr T.Text
 
 instance ConstantPool [] CPInfo where
   cpSafeIndex xs n =
@@ -393,15 +383,15 @@ instance ConstantPool [] CPInfo where
   cpElement xs n = case cpSafeIndex xs n of
     Nothing -> Left $ PE $ PoolOutOfBoundsException $ show n ++ "; " ++ show xs
     Just idx -> Right $ xs !! fromIntegral idx
-  cpCheckType xs n tr =
-    let cp = cpElement xs n
-     in if typeOf cp == tr
-          then Right ()
-          else
-            Left $
-              PE $
-                PoolUnmatchedType $
-                  printf "Expected: %s, Actual: %s." (show tr) (show $ typeOf cp)
+  cpCheckType tr xs n = do
+    cp <- cpElement xs n
+    if typeOf cp == tr
+      then Right cp
+      else
+        Left $
+          PE $
+            PoolUnmatchedType $
+              printf "Expected: %s, Actual: %s." (show tr) (show $ typeOf cp)
   cpUtf8 cp n = do
     info <- cpElement cp n
     case info of

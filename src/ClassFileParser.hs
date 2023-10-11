@@ -26,30 +26,29 @@ class CPInfoChecker a where
 instance CPInfoChecker CPInfo where
   checkCPInfo cf (Constant_Class idx) = do
     let cp = getCPInfo cf
-    ConstantUtf8 val <- cpUtf8 cp idx
-    case verifyLegalClassName val of
+    name <- cpUtf8 cp idx
+    case verifyLegalClassName name of
       Nothing -> Right ()
       Just str -> Left $ ClassFormatError str
- 
+  checkCPInfo _ _ = undefined
 
-  -- checkCPInfo cf (Constant_Utf8 _) = undefined
-  -- checkCPInfo cf (Constant_Integer _) = undefined
-  -- checkCPInfo cf (Constant_Float ) = undefined
-  -- checkCPInfo cf (Constant_Long ) = undefined
-  -- checkCPInfo cf (Constant_Double ) = undefined
-  -- checkCPInfo cf (Constant_Class ) = undefined
-  -- checkCPInfo cf (Constant_String idx) = undefined
-  -- checkCPInfo cf (Constant_Fieldref cIdx ntIdx) = undefined
-  -- checkCPInfo cf (Constant_Methodref cIdx ntIdx) = undefined
-  -- checkCPInfo cf (Constant_InterfaceMethodref cIdx ntIdx) = undefined
-  -- checkCPInfo cf (Constant_NameAndType ) = undefined
-  -- checkCPInfo cf (Constant_MethodHandle ) = undefined
-  -- checkCPInfo cf (Constant_MethodType ) = undefined
-  -- checkCPInfo cf (Constant_Dynamic ) = undefined
-  -- checkCPInfo cf (Constant_InvokeDynamic ) = undefined
-  -- checkCPInfo cf (Constant_Module ) = undefined
-  -- checkCPInfo cf (Constant_Package  ) = undefined
-
+-- checkCPInfo cf (Constant_Utf8 _) = undefined
+-- checkCPInfo cf (Constant_Integer _) = undefined
+-- checkCPInfo cf (Constant_Float ) = undefined
+-- checkCPInfo cf (Constant_Long ) = undefined
+-- checkCPInfo cf (Constant_Double ) = undefined
+-- checkCPInfo cf (Constant_Class ) = undefined
+-- checkCPInfo cf (Constant_String idx) = undefined
+-- checkCPInfo cf (Constant_Fieldref cIdx ntIdx) = undefined
+-- checkCPInfo cf (Constant_Methodref cIdx ntIdx) = undefined
+-- checkCPInfo cf (Constant_InterfaceMethodref cIdx ntIdx) = undefined
+-- checkCPInfo cf (Constant_NameAndType ) = undefined
+-- checkCPInfo cf (Constant_MethodHandle ) = undefined
+-- checkCPInfo cf (Constant_MethodType ) = undefined
+-- checkCPInfo cf (Constant_Dynamic ) = undefined
+-- checkCPInfo cf (Constant_InvokeDynamic ) = undefined
+-- checkCPInfo cf (Constant_Module ) = undefined
+-- checkCPInfo cf (Constant_Package  ) = undefined
 
 data LegalTag = LegalClass | LegalField | LegalMethod deriving (Eq)
 
