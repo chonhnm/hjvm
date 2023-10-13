@@ -1,15 +1,16 @@
 module ClassFileParser where
 
 import ClassFile
+import Control.Monad (when)
 import Control.Monad.Trans.Except
 import Control.Monad.Trans.Reader (ReaderT)
 import Data.Foldable (forM_)
+import Data.Functor.Identity (Identity)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Text.Parsec
 import Text.Printf (printf)
 import Util
-import Data.Functor.Identity (Identity)
 
 class ClassFileParser cf where
   getMajorVersion :: cf -> U2
@@ -121,12 +122,7 @@ verifyUnqualifiedName tag name =
           False
     checkIt _ = True
 
-data MyState = MS {array_dims :: Int, param_count :: Int}
-
-emptyMyState :: MyState
-emptyMyState = MS 0 0
-
-type FieldParser = ParsecT Text MyState Identity
+type FieldParser = ParsecT Text () Identity
 
 data FieldType = BaseType | ObjectType | ArrayType
 
@@ -134,13 +130,13 @@ data VoidType = VoidType
 
 runParseFieldDescriptor :: Text -> Maybe String
 runParseFieldDescriptor name =
-  case runP verifyFieldDescriptor emptyMyState "fielddesc" name of
+  case runP verifyFieldDescriptor () "fielddesc" name of
     Left err -> Just $ show err
     Right _ -> Nothing
 
 runParseMethodDescriptor :: Text -> Maybe String
 runParseMethodDescriptor name =
-  case runP verifyMethodDescriptor emptyMyState "methoddesc" name of
+  case runP verifyMethodDescriptor () "methoddesc" name of
     Left err -> Just $ show err
     Right _ -> Nothing
 
@@ -148,11 +144,9 @@ verifyMethodDescriptor :: FieldParser ()
 verifyMethodDescriptor = do
   _ <- char jvm_signature_func
   xs <- many verifyFieldType
-  if length xs > 255
-    then fail "Method with over 255 parameters"
-    else do
-      _ <- char jvm_signature_endfunc
-      verifyReturnDescriptor
+  when (length xs > 255) $ fail "Method with over 255 parameters"
+  _ <- char jvm_signature_endfunc
+  verifyReturnDescriptor
 
 verifyFieldDescriptor :: FieldParser ()
 verifyFieldDescriptor = verifyFieldType >> eof
@@ -190,11 +184,7 @@ verifyObjectType = do
 
 verifyArrayType :: FieldParser ()
 verifyArrayType = do
-  _ <- char jvm_signature_array
-  MS dims pc <- getState
-  if dims >= 255
-    then fail "Array type with over 255 dimensions."
-    else do
-      putState $ MS (dims + 1) pc
-      verifyFieldType
-      return ()
+  xs <- many1 $ char jvm_signature_array
+  when (length xs > 255) $ fail $ "Array type with over 255 dimensions: " ++ show xs
+  verifyFieldType
+  return ()
