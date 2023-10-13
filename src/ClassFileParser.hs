@@ -2,15 +2,14 @@ module ClassFileParser where
 
 import ClassFile
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader (ReaderT (runReaderT), runReader, ask, local)
+import Control.Monad.Trans.Reader (ReaderT)
 import Data.Foldable (forM_)
-import Data.Functor.Identity (Identity (Identity))
 import Data.Text (Text)
 import Data.Text qualified as T
 import Text.Parsec
 import Text.Printf (printf)
 import Util
-import Control.Monad.Trans.Class (MonadTrans(lift))
+import Data.Functor.Identity (Identity)
 
 class ClassFileParser cf where
   getMajorVersion :: cf -> U2
@@ -127,9 +126,7 @@ data MyState = MS {array_dims :: Int, param_count :: Int}
 emptyMyState :: MyState
 emptyMyState = MS 0 0
 
-type FieldReader = ReaderT MyState Identity
-
-type FieldParser = ParsecT Text () FieldReader
+type FieldParser = ParsecT Text MyState Identity
 
 data FieldType = BaseType | ObjectType | ArrayType
 
@@ -137,26 +134,25 @@ data VoidType = VoidType
 
 runParseFieldDescriptor :: Text -> Maybe String
 runParseFieldDescriptor name =
-  case runReader
-    (runPT verifyFieldDescriptor () "fielddesc" name)
-    emptyMyState of
+  case runP verifyFieldDescriptor emptyMyState "fielddesc" name of
     Left err -> Just $ show err
     Right _ -> Nothing
 
 runParseMethodDescriptor :: Text -> Maybe String
 runParseMethodDescriptor name =
-  case runReader
-    (runPT verifyMethodDescriptor () "methoddesc" name)
-    emptyMyState of
+  case runP verifyMethodDescriptor emptyMyState "methoddesc" name of
     Left err -> Just $ show err
     Right _ -> Nothing
 
 verifyMethodDescriptor :: FieldParser ()
 verifyMethodDescriptor = do
   _ <- char jvm_signature_func
-  _ <- many verifyFieldType
-  _ <- char jvm_signature_endfunc
-  verifyReturnDescriptor
+  xs <- many verifyFieldType
+  if length xs > 255
+    then fail "Method with over 255 parameters"
+    else do
+      _ <- char jvm_signature_endfunc
+      verifyReturnDescriptor
 
 verifyFieldDescriptor :: FieldParser ()
 verifyFieldDescriptor = verifyFieldType >> eof
@@ -169,11 +165,7 @@ verifyVoidDescriptor :: FieldParser ()
 verifyVoidDescriptor = char jvm_signature_void >> return ()
 
 verifyFieldType :: FieldParser ()
-verifyFieldType = do
-  MS dims _ <- lift ask
-  if dims > 255
-    then fail "Array type with over 255 dimensions."
-    else verifyBaseType <|> verifyObjectType <|> verifyArrayType
+verifyFieldType = verifyBaseType <|> verifyObjectType <|> verifyArrayType
 
 verifyBaseType :: FieldParser ()
 verifyBaseType = do
@@ -199,5 +191,10 @@ verifyObjectType = do
 verifyArrayType :: FieldParser ()
 verifyArrayType = do
   _ <- char jvm_signature_array
-  _ <- lift $ local (\(MS dims pc) -> MS (dims + 1) pc) verifyFieldType
-  return ()
+  MS dims pc <- getState
+  if dims >= 255
+    then fail "Array type with over 255 dimensions."
+    else do
+      putState $ MS (dims + 1) pc
+      verifyFieldType
+      return ()
