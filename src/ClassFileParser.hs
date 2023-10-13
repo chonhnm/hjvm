@@ -2,13 +2,15 @@ module ClassFileParser where
 
 import ClassFile
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader (ReaderT)
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), runReader, ask, local)
 import Data.Foldable (forM_)
-import Data.Functor.Identity (Identity)
+import Data.Functor.Identity (Identity (Identity))
+import Data.Text (Text)
 import Data.Text qualified as T
 import Text.Parsec
 import Text.Printf (printf)
 import Util
+import Control.Monad.Trans.Class (MonadTrans(lift))
 
 class ClassFileParser cf where
   getMajorVersion :: cf -> U2
@@ -24,51 +26,78 @@ class CPInfoChecker a where
   checkCPInfo :: ClassFile -> a -> MyErr ()
 
 instance CPInfoChecker CPInfo where
-  checkCPInfo cf (Constant_Class idx) = do
-    let cp = getCPInfo cf
-    name <- cpUtf8 cp idx
-    case verifyLegalClassName name of
-      Nothing -> Right ()
-      Just str -> Left $ ClassFormatError str
-  checkCPInfo _ _ = undefined
+  checkCPInfo = checkCPInfo_
 
--- checkCPInfo cf (Constant_Utf8 _) = undefined
--- checkCPInfo cf (Constant_Integer _) = undefined
--- checkCPInfo cf (Constant_Float ) = undefined
--- checkCPInfo cf (Constant_Long ) = undefined
--- checkCPInfo cf (Constant_Double ) = undefined
--- checkCPInfo cf (Constant_Class ) = undefined
--- checkCPInfo cf (Constant_String idx) = undefined
--- checkCPInfo cf (Constant_Fieldref cIdx ntIdx) = undefined
--- checkCPInfo cf (Constant_Methodref cIdx ntIdx) = undefined
--- checkCPInfo cf (Constant_InterfaceMethodref cIdx ntIdx) = undefined
--- checkCPInfo cf (Constant_NameAndType ) = undefined
--- checkCPInfo cf (Constant_MethodHandle ) = undefined
--- checkCPInfo cf (Constant_MethodType ) = undefined
--- checkCPInfo cf (Constant_Dynamic ) = undefined
--- checkCPInfo cf (Constant_InvokeDynamic ) = undefined
--- checkCPInfo cf (Constant_Module ) = undefined
--- checkCPInfo cf (Constant_Package  ) = undefined
+checkCPInfo_ :: ClassFile -> CPInfo -> MyErr ()
+checkCPInfo_ cf (Constant_Utf8 _) = undefined
+checkCPInfo_ cf (Constant_Integer _) = undefined
+checkCPInfo_ cf (Constant_Float _) = undefined
+checkCPInfo_ cf (Constant_Long _) = undefined
+checkCPInfo_ cf (Constant_Double _) = undefined
+checkCPInfo_ cf (Constant_Class idx) = checkClassName cf idx
+checkCPInfo_ cf (Constant_String idx) = undefined
+checkCPInfo_ cf (Constant_Fieldref cIdx ntIdx) = do
+  checkClassName cf cIdx
+  ConstNameAndType nIdx desIdx <- cpNameAndType (getCPInfo cf) ntIdx
+  checkFieldName cf nIdx
+  checkFieldDesc cf desIdx
+checkCPInfo_ cf (Constant_Methodref cIdx ntIdx) = do
+  checkClassName cf cIdx
+  ConstNameAndType nIdx desIdx <- cpNameAndType (getCPInfo cf) ntIdx
+  checkMethodName cf nIdx
+  checkMethodDesc (T.pack "") cf desIdx
+checkCPInfo_ cf (Constant_InterfaceMethodref cIdx ntIdx) = undefined
+checkCPInfo_ cf (Constant_NameAndType nt) = undefined
+checkCPInfo_ cf (Constant_MethodHandle kind idx) = undefined
+checkCPInfo_ cf (Constant_MethodType idx) = undefined
+checkCPInfo_ cf (Constant_Dynamic attrIdx idx) = undefined
+checkCPInfo_ cf (Constant_InvokeDynamic attrIdx idx) = undefined
+checkCPInfo_ cf (Constant_Module idx) = undefined
+checkCPInfo_ cf (Constant_Package idx) = undefined
+
+checkFieldDesc :: ClassFile -> U2 -> MyErr ()
+checkFieldDesc = checkUtf8 runParseFieldDescriptor
+
+checkMethodDesc :: Text -> ClassFile -> U2 -> MyErr ()
+checkMethodDesc name = checkUtf8 runParseMethodDescriptor
+
+checkUtf8 :: (Text -> Maybe String) -> ClassFile -> U2 -> MyErr ()
+checkUtf8 checker cf idx = do
+  let cp = getCPInfo cf
+  name <- cpUtf8 cp idx
+  case checker name of
+    Nothing -> Right ()
+    Just str -> Left $ ClassFormatError str
+
+checkFieldName :: ClassFile -> U2 -> MyErr ()
+checkFieldName = checkUtf8 verifyLegalFieldName
+
+checkMethodName :: ClassFile -> U2 -> MyErr ()
+checkMethodName = checkUtf8 verifyLegalMethodName
+
+checkClassName :: ClassFile -> U2 -> MyErr ()
+checkClassName = checkUtf8 verifyLegalClassName
 
 data LegalTag = LegalClass | LegalField | LegalMethod deriving (Eq)
 
-verifyLegalClassName :: T.Text -> Maybe String
+verifyLegalClassName :: Text -> Maybe String
 verifyLegalClassName name
   | T.head name == jvm_signature_array = runParseFieldDescriptor name
   | verifyUnqualifiedName LegalClass name = Nothing
   | otherwise = Just $ printf "Illegal class name \"%s\"." name
 
-verifyLegalFieldName :: T.Text -> Bool
-verifyLegalFieldName = verifyUnqualifiedName LegalField
+verifyLegalFieldName :: Text -> Maybe String
+verifyLegalFieldName name
+  | verifyUnqualifiedName LegalField name = Nothing
+  | otherwise = Just $ printf "Illegal field name \"%s\"." name
 
-verifyLegalMethodName :: T.Text -> Bool
-verifyLegalMethodName name =
-  let ch = T.head name
-   in if ch == jvm_signature_special
-        then name == T.pack "<init>" || name == T.pack "<clinit>"
-        else verifyUnqualifiedName LegalMethod name
+verifyLegalMethodName :: Text -> Maybe String
+verifyLegalMethodName name
+  | name == T.pack "<init>" || name == T.pack "<clinit>" = Nothing
+  | verifyUnqualifiedName LegalMethod name = Nothing
+  | otherwise = Just $ printf "Illegal method name \"%s\"." name
 
-verifyUnqualifiedName :: LegalTag -> T.Text -> Bool
+verifyUnqualifiedName :: LegalTag -> Text -> Bool
 verifyUnqualifiedName _ name | T.null name = False
 verifyUnqualifiedName _ name
   | T.head name == jvm_signature_slash
@@ -93,32 +122,61 @@ verifyUnqualifiedName tag name =
           False
     checkIt _ = True
 
-type MyParser = ParsecT T.Text MyState Identity
-
-newtype MyState = MS {array_dims :: Int}
+data MyState = MS {array_dims :: Int, param_count :: Int}
 
 emptyMyState :: MyState
-emptyMyState = MS 0
+emptyMyState = MS 0 0
+
+type FieldReader = ReaderT MyState Identity
+
+type FieldParser = ParsecT Text () FieldReader
 
 data FieldType = BaseType | ObjectType | ArrayType
 
-parseFieldDescriptor :: MyParser ()
-parseFieldDescriptor = parseFieldType >> eof
+data VoidType = VoidType
 
-runParseFieldDescriptor :: T.Text -> Maybe String
-runParseFieldDescriptor name = case runP parseFieldDescriptor emptyMyState "fieldtype" name of
-  Left err -> Just $ show err
-  Right _ -> Nothing
+runParseFieldDescriptor :: Text -> Maybe String
+runParseFieldDescriptor name =
+  case runReader
+    (runPT verifyFieldDescriptor () "fielddesc" name)
+    emptyMyState of
+    Left err -> Just $ show err
+    Right _ -> Nothing
 
-parseFieldType :: MyParser ()
-parseFieldType = do
-  MS dims <- getState
+runParseMethodDescriptor :: Text -> Maybe String
+runParseMethodDescriptor name =
+  case runReader
+    (runPT verifyMethodDescriptor () "methoddesc" name)
+    emptyMyState of
+    Left err -> Just $ show err
+    Right _ -> Nothing
+
+verifyMethodDescriptor :: FieldParser ()
+verifyMethodDescriptor = do
+  _ <- char jvm_signature_func
+  _ <- many verifyFieldType
+  _ <- char jvm_signature_endfunc
+  verifyReturnDescriptor
+
+verifyFieldDescriptor :: FieldParser ()
+verifyFieldDescriptor = verifyFieldType >> eof
+
+verifyReturnDescriptor :: FieldParser ()
+verifyReturnDescriptor = do
+  verifyFieldType <|> verifyVoidDescriptor
+
+verifyVoidDescriptor :: FieldParser ()
+verifyVoidDescriptor = char jvm_signature_void >> return ()
+
+verifyFieldType :: FieldParser ()
+verifyFieldType = do
+  MS dims _ <- lift ask
   if dims > 255
     then fail "Array type with over 255 dimensions."
-    else parseBaseType <|> parseObjectType <|> parseArrayType
+    else verifyBaseType <|> verifyObjectType <|> verifyArrayType
 
-parseBaseType :: MyParser ()
-parseBaseType = do
+verifyBaseType :: FieldParser ()
+verifyBaseType = do
   _ <-
     oneOf
       [ jvm_signature_byte,
@@ -132,15 +190,14 @@ parseBaseType = do
       ]
   return ()
 
-parseObjectType :: MyParser ()
-parseObjectType = do
+verifyObjectType :: FieldParser ()
+verifyObjectType = do
   _ <- char jvm_signature_class
   name <- manyTill anyChar (char jvm_signature_endclass)
   forM_ (verifyLegalClassName $ T.pack name) fail
 
-parseArrayType :: MyParser ()
-parseArrayType = do
+verifyArrayType :: FieldParser ()
+verifyArrayType = do
   _ <- char jvm_signature_array
-  modifyState (\(MS dims) -> MS (dims + 1))
-  parseFieldType
+  _ <- lift $ local (\(MS dims pc) -> MS (dims + 1) pc) verifyFieldType
   return ()

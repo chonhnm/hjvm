@@ -105,7 +105,9 @@ parseConstantInterfaceMethodref :: Get CPInfo
 parseConstantInterfaceMethodref = liftM2 Constant_InterfaceMethodref getWord16be getWord16be
 
 parseConstantNameAndType :: Get CPInfo
-parseConstantNameAndType = liftM2 Constant_NameAndType getWord16be getWord16be
+parseConstantNameAndType = do
+  name <- getWord16be
+  Constant_NameAndType . ConstNameAndType name <$> getWord16be
 
 parseConstantMethodHandle :: MajorVersionReader CPInfo
 parseConstantMethodHandle = do

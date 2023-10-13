@@ -26,6 +26,12 @@ type AttrIndex = U2
 
 type CPIndex = U2
 
+data ConstNameAndType
+  = ConstNameAndType
+      CPIndex -- name_index
+      CPIndex -- descriptor_index
+  deriving (Show)
+
 data CPInfo
   = Constant_Utf8 T.Text
   | Constant_Integer Int32
@@ -37,7 +43,7 @@ data CPInfo
   | Constant_Fieldref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
   | Constant_Methodref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
   | Constant_InterfaceMethodref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
-  | Constant_NameAndType {_name_index :: CPIndex, _descriptor_index :: CPIndex}
+  | Constant_NameAndType ConstNameAndType
   | Constant_MethodHandle {_reference_kind :: ReferenceKind, _reference_index :: CPIndex}
   | Constant_MethodType {_descriptor_index :: CPIndex}
   | Constant_Dynamic {_bootstrap_method_attr_index :: AttrIndex, _name_and_type_index :: CPIndex}
@@ -374,6 +380,7 @@ class ConstantPool s a where
   cpElement :: s a -> U2 -> MyErr a
   cpCheckType :: TypeRep -> s a -> U2 -> MyErr a
   cpUtf8 :: s a -> U2 -> MyErr T.Text
+  cpNameAndType :: s a -> U2 -> MyErr ConstNameAndType
 
 instance ConstantPool [] CPInfo where
   cpSafeIndex xs n =
@@ -396,4 +403,12 @@ instance ConstantPool [] CPInfo where
     info <- cpElement cp n
     case info of
       Constant_Utf8 x -> Right x
-      _ -> Left $ PE $ PoolUnmatchedType $ "Expected: Constant_Utf8, Actual" ++ show info
+      _ -> unmatchedErr "Constant_Utf8" info
+  cpNameAndType cp n = do
+    info <- cpElement cp n
+    case info of
+      Constant_NameAndType x -> Right x
+      _ -> unmatchedErr "Constant_NameAndType" info
+
+unmatchedErr :: String -> CPInfo -> MyErr a
+unmatchedErr expected actual = Left $ PE $ PoolUnmatchedType $ printf "Expected: %s, Actual: %s." expected $ show actual
