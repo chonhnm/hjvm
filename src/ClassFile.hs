@@ -414,8 +414,9 @@ javaVersion version =
 
 class ConstantPool cp where
   cpCheckIndex :: cp -> U2 -> MyErr ()
-  cpCheckType :: CPTag -> cp -> U2 -> MyErr ()
+  cpCheckTag :: CPTag -> cp -> U2 -> MyErr ()
   cpElement :: cp -> U2 -> MyErr CPInfo
+  cpTag :: cp -> U2 -> MyErr CPTag
   cpUtf8 :: cp -> U2 -> MyErr ConstantUtf8
   cpNameAndType :: cp -> U2 -> MyErr ConstNameAndType
 
@@ -429,7 +430,10 @@ instance ConstantPool ConstantPoolInfo where
   cpElement cp n = do
     cpCheckIndex cp n
     return $ cpInfos cp !! fromIntegral n
-  cpCheckType tag cp n = do
+  cpTag cp n = do
+    cpCheckIndex cp n
+    return $ cpTags cp !! fromIntegral n  
+  cpCheckTag tag cp n = do
     cpCheckIndex cp n
     let atag = cpTags cp !! fromIntegral n
     when (tag /= atag) $

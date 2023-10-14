@@ -3,7 +3,7 @@ module ClassFileParser where
 import ClassFile
 import Control.Monad (when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask)
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local)
 import Data.Foldable (forM_)
 import Data.Functor (void)
 import Data.Functor.Identity (Identity)
@@ -29,10 +29,14 @@ instance CPInfoChecker CPInfo where
 
 checkCPInfo_ :: CPInfo -> CPReader ()
 checkCPInfo_ (Constant_Utf8 _) = undefined
-checkCPInfo_ (Constant_Integer _) = undefined
-checkCPInfo_ (Constant_Float _) = undefined
-checkCPInfo_ (Constant_Long _) = undefined
-checkCPInfo_ (Constant_Double _) = undefined
+checkCPInfo_ (Constant_Integer _) = return ()
+checkCPInfo_ (Constant_Float _) = return ()
+checkCPInfo_ (Constant_Long _) = do
+  idx <- asks envCurIdx
+  checkConstantInvalid (idx + 1)
+checkCPInfo_ (Constant_Double _) = do
+  idx <- asks envCurIdx
+  checkConstantInvalid (idx + 1)
 checkCPInfo_ (Constant_Class idx) = void $ checkConstantClass idx
 checkCPInfo_ (Constant_String idx) = void $ checkConstantUtf8 idx
 checkCPInfo_ (Constant_Fieldref cIdx ntIdx) = do
@@ -71,12 +75,12 @@ checkCPInfo_ (Constant_Module idx) = undefined
 checkCPInfo_ (Constant_Package idx) = undefined
 checkCPInfo_ Constant_Invalid = undefined
 
-type CPReader = ReaderT ConstantPoolInfo MyErr
+type CPReader = ReaderT Env MyErr
 
 cfErr :: String -> Either AppErr b
 cfErr str = Left $ ClassFormatError str
 
-data Env = Env {env_cp :: ConstantPoolInfo, env_tags :: [CPTag]}
+data Env = Env {envPool :: ConstantPoolInfo, envCurIdx :: U2}
 
 checkConstantPoolInfo :: ConstantPoolInfo -> MyErr ()
 checkConstantPoolInfo cp =
@@ -89,16 +93,21 @@ checkConstantPoolInfo cp =
     when (cnt <= 0) $ cfErr "Constant pool count shoud greater than zero."
     when (head tags /= JVM_Constant_Invalid) $
       cfErr "Constant pool entry at zero is not invalid."
-    runReaderT (doCheckCPInfo infos 0) cp
+    runReaderT (doCheckCPInfo infos) (Env cp 0)
 
-doCheckCPInfo :: [CPInfo] -> U2 -> CPReader ()
-doCheckCPInfo [] _ = return ()
-doCheckCPInfo (x : xs) idx = do
-  doCheckOne x idx
-  doCheckCPInfo xs (idx + 1)
+doCheckCPInfo :: [CPInfo] -> CPReader ()
+doCheckCPInfo [] = return ()
+doCheckCPInfo (x : xs) = do
+  checkCPInfo x
+  local incIdx $ doCheckCPInfo xs
 
-doCheckOne :: CPInfo -> U2 -> CPReader ()
-doCheckOne info idx = undefined
+incIdx :: Env -> Env
+incIdx (Env cp idx) = Env cp (idx + 1)
+
+checkConstantInvalid :: U2 -> CPReader ()
+checkConstantInvalid idx = do
+  cp <- asks envPool
+  lift $ cpCheckTag JVM_Constant_Invalid cp idx
 
 checkConstantUtf8 :: U2 -> CPReader ()
 checkConstantUtf8 = undefined
@@ -154,7 +163,7 @@ checkConstantPackage = undefined
 --------------------------
 checkUtf8 :: (Text -> Maybe String) -> U2 -> CPReader Text
 checkUtf8 checker idx = do
-  cp <- ask
+  cp <- asks envPool
   ConstantUtf8 name <- lift $ cpUtf8 cp idx
   case checker name of
     Nothing -> return name
