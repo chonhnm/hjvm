@@ -2,9 +2,11 @@ module ClassFileParser where
 
 import ClassFile
 import Control.Monad (when)
+import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Except
-import Control.Monad.Trans.Reader (ReaderT)
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask)
 import Data.Foldable (forM_)
+import Data.Functor (void)
 import Data.Functor.Identity (Identity)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -14,69 +16,173 @@ import Util
 
 class ClassFileParser cf where
   getMajorVersion :: cf -> U2
-  getCPInfo :: cf -> [CPInfo]
+  getConstantPoolInfo :: cf -> ConstantPoolInfo
 
 instance ClassFileParser ClassFile where
   getMajorVersion = majorVersion
-  getCPInfo = constantPool
-
-type ClassFileEnv = ReaderT ClassFile (ExceptT AppErr Identity)
+  getConstantPoolInfo = constantPool
 
 class CPInfoChecker a where
-  checkCPInfo :: ClassFile -> a -> MyErr ()
+  checkCPInfo :: a -> CPReader ()
 
 instance CPInfoChecker CPInfo where
   checkCPInfo = checkCPInfo_
 
-checkCPInfo_ :: ClassFile -> CPInfo -> MyErr ()
-checkCPInfo_ cf (Constant_Utf8 _) = undefined
-checkCPInfo_ cf (Constant_Integer _) = undefined
-checkCPInfo_ cf (Constant_Float _) = undefined
-checkCPInfo_ cf (Constant_Long _) = undefined
-checkCPInfo_ cf (Constant_Double _) = undefined
-checkCPInfo_ cf (Constant_Class idx) = checkClassName cf idx
-checkCPInfo_ cf (Constant_String idx) = undefined
-checkCPInfo_ cf (Constant_Fieldref cIdx ntIdx) = do
-  checkClassName cf cIdx
-  ConstNameAndType nIdx desIdx <- cpNameAndType (getCPInfo cf) ntIdx
-  checkFieldName cf nIdx
-  checkFieldDesc cf desIdx
-checkCPInfo_ cf (Constant_Methodref cIdx ntIdx) = do
-  checkClassName cf cIdx
-  ConstNameAndType nIdx desIdx <- cpNameAndType (getCPInfo cf) ntIdx
-  checkMethodName cf nIdx
-  checkMethodDesc (T.pack "") cf desIdx
-checkCPInfo_ cf (Constant_InterfaceMethodref cIdx ntIdx) = undefined
-checkCPInfo_ cf (Constant_NameAndType nt) = undefined
-checkCPInfo_ cf (Constant_MethodHandle kind idx) = undefined
-checkCPInfo_ cf (Constant_MethodType idx) = undefined
-checkCPInfo_ cf (Constant_Dynamic attrIdx idx) = undefined
-checkCPInfo_ cf (Constant_InvokeDynamic attrIdx idx) = undefined
-checkCPInfo_ cf (Constant_Module idx) = undefined
-checkCPInfo_ cf (Constant_Package idx) = undefined
+checkCPInfo_ :: CPInfo -> CPReader ()
+checkCPInfo_  (Constant_Utf8 _) = undefined
+checkCPInfo_  (Constant_Integer _) = undefined
+checkCPInfo_  (Constant_Float _) = undefined
+checkCPInfo_  (Constant_Long _) = undefined
+checkCPInfo_  (Constant_Double _) = undefined
+checkCPInfo_  (Constant_Class idx) = do
+  _ <- getAndCheckClassName cf idx
+  return ()
+checkCPInfo_  (Constant_String idx) = do
+  _ <- cpUtf8 (getConstantPoolInfo cf) idx
+  return ()
+checkCPInfo_  (Constant_Fieldref cIdx ntIdx) = do
+  _ <- getAndCheckClassName cf cIdx
+  ConstNameAndType nIdx desIdx <- cpNameAndType (getConstantPoolInfo cf) ntIdx
+  _ <- getAndCheckFieldName cf nIdx
+  _ <- getAndCheckFieldDesc cf desIdx
+  return ()
+checkCPInfo_  (Constant_Methodref cIdx ntIdx) = do
+  _ <- getAndCheckClassName cf cIdx
+  ConstNameAndType nIdx desIdx <- cpNameAndType (getConstantPoolInfo cf) ntIdx
+  name <- getAndCheckMethodName cf nIdx
+  desc <- getAndCheckMethodDesc cf desIdx
+  when (T.head name == jvm_signature_special)
+    $ when
+      (name /= T.pack "<init>" || T.last desc /= jvm_signature_void)
+    $ Left
+    $ ClassFormatError
+    $ printf "Unexpected method name and type: %s:%s" name desc
+checkCPInfo_  (Constant_InterfaceMethodref cIdx ntIdx) = do
+  _ <- getAndCheckClassName cf cIdx
+  ConstNameAndType nIdx desIdx <- cpNameAndType (getConstantPoolInfo cf) ntIdx
+  name <- getAndCheckMethodName cf nIdx
+  _ <- getAndCheckMethodDesc cf desIdx
+  when (T.head name == jvm_signature_special) $
+    Left $
+      ClassFormatError $
+        printf "Unexpected interface method name and type: %s:%s" name
+checkCPInfo_  (Constant_NameAndType nt) = undefined
+checkCPInfo_  (Constant_MethodHandle kind idx) = undefined
+checkCPInfo_  (Constant_MethodType idx) = undefined
+checkCPInfo_  (Constant_Dynamic attrIdx idx) = undefined
+checkCPInfo_  (Constant_InvokeDynamic attrIdx idx) = undefined
+checkCPInfo_  (Constant_Module idx) = undefined
+checkCPInfo_  (Constant_Package idx) = undefined
+checkCPInfo_ Constant_Invalid = undefined
 
-checkFieldDesc :: ClassFile -> U2 -> MyErr ()
-checkFieldDesc = checkUtf8 runParseFieldDescriptor
+type CPReader = ReaderT ConstantPoolInfo MyErr
 
-checkMethodDesc :: Text -> ClassFile -> U2 -> MyErr ()
-checkMethodDesc name = checkUtf8 runParseMethodDescriptor
+cfErr :: String -> Either AppErr b
+cfErr str = Left $ ClassFormatError str
 
-checkUtf8 :: (Text -> Maybe String) -> ClassFile -> U2 -> MyErr ()
-checkUtf8 checker cf idx = do
-  let cp = getCPInfo cf
-  name <- cpUtf8 cp idx
+data Env = Env {env_cp :: ConstantPoolInfo, env_tags :: [CPTag]}
+
+checkConstantPoolInfo :: ConstantPoolInfo -> MyErr ()
+checkConstantPoolInfo cp =
+  do
+    let tags = cpTags cp
+    let infos = cpInfos cp
+    let cnt = cpCount cp
+    when (length tags /= fromIntegral cnt || length tags /= length infos) $
+      cfErr "Unexpected fatal error."
+    when (cnt <= 0) $ cfErr "Constant pool count shoud greater than zero."
+    when (head tags /= JVM_Constant_Invalid || head infos /= Constant_Invalid) $
+      cfErr "Constant pool entry at zero is not invalid."
+    runReaderT (doCheckCPInfo infos 0) cp
+
+doCheckCPInfo :: [CPInfo] -> U2 -> CPReader ()
+doCheckCPInfo [] _ = return ()
+doCheckCPInfo (x : xs) idx = do
+  doCheckOne x idx
+  doCheckCPInfo xs (idx + 1)
+
+doCheckOne :: CPInfo -> U2 -> CPReader ()
+doCheckOne tag idx = undefined
+
+checkConstantUtf8 :: CPReader ()
+checkConstantUtf8 = undefined
+
+checkConstantInteger :: CPReader ()
+checkConstantInteger = undefined
+
+checkConstantFloat :: CPReader ()
+checkConstantFloat = undefined
+
+checkConstantLong :: CPReader ()
+checkConstantLong = undefined
+
+checkConstantDouble :: CPReader ()
+checkConstantDouble = undefined
+
+checkConstantClass :: U2 -> CPReader Text
+checkConstantClass = checkUtf8 verifyLegalClassName 
+
+checkConstantString :: CPReader ()
+checkConstantString = undefined
+
+checkConstantFieldref :: U2 -> CPReader ()
+checkConstantFieldref idx = do 
+  _ <- checkConstantClass idx 
+  ConstNameAndType nIdx desIdx <- cpNameAndType (getConstantPoolInfo cf) ntIdx
+  _ <- getAndCheckFieldName cf nIdx
+  _ <- getAndCheckFieldDesc cf desIdx
+  return ()
+
+checkConstantMethodref :: CPReader ()
+checkConstantMethodref = undefined
+
+checkConstantInterfaceMethodref :: CPReader ()
+checkConstantInterfaceMethodref = undefined
+
+checkConstantNameAndType :: CPReader ()
+checkConstantNameAndType = undefined
+
+checkConstantMethodHandle :: CPReader ()
+checkConstantMethodHandle = undefined
+
+checkConstantMethodType :: CPReader ()
+checkConstantMethodType = undefined
+
+checkConstantDynamic :: CPReader ()
+checkConstantDynamic = undefined
+
+checkConstantInvokeDynamic :: CPReader ()
+checkConstantInvokeDynamic = undefined
+
+checkConstantModule :: CPReader ()
+checkConstantModule = undefined
+
+checkConstantPackage :: CPReader ()
+checkConstantPackage = undefined
+
+--------------------------
+checkUtf8 :: (Text -> Maybe String) -> U2 -> CPReader Text
+checkUtf8 checker idx = do
+  let cp = ask
+  ConstantUtf8 name <- lift $ cpUtf8 cp idx
   case checker name of
-    Nothing -> Right ()
-    Just str -> Left $ ClassFormatError str
+    Nothing -> return name
+    Just str -> lift $ Left $ ClassFormatError str
 
-checkFieldName :: ClassFile -> U2 -> MyErr ()
-checkFieldName = checkUtf8 verifyLegalFieldName
+getAndCheckFieldDesc :: U2 -> CPReader Text
+getAndCheckFieldDesc = checkUtf8 runParseFieldDescriptor
 
-checkMethodName :: ClassFile -> U2 -> MyErr ()
-checkMethodName = checkUtf8 verifyLegalMethodName
+getAndCheckMethodDesc :: U2 -> CPReader Text
+getAndCheckMethodDesc = checkUtf8 runParseMethodDescriptor
 
-checkClassName :: ClassFile -> U2 -> MyErr ()
-checkClassName = checkUtf8 verifyLegalClassName
+getAndCheckFieldName :: U2 -> CPReader Text
+getAndCheckFieldName = checkUtf8 verifyLegalFieldName
+
+getAndCheckMethodName :: U2 -> CPReader Text
+getAndCheckMethodName = checkUtf8 verifyLegalMethodName
+
+getAndCheckClassName :: U2 -> CPReader Text
+getAndCheckClassName = checkUtf8 verifyLegalClassName
 
 data LegalTag = LegalClass | LegalField | LegalMethod deriving (Eq)
 
@@ -124,9 +230,7 @@ verifyUnqualifiedName tag name =
 
 type FieldParser = ParsecT Text () Identity
 
-data FieldType = BaseType | ObjectType | ArrayType
-
-data VoidType = VoidType
+data FieldType = BaseType | ObjectType | ArrayType | VoidType
 
 runParseFieldDescriptor :: Text -> Maybe String
 runParseFieldDescriptor name =
@@ -156,7 +260,7 @@ verifyReturnDescriptor = do
   verifyFieldType <|> verifyVoidDescriptor
 
 verifyVoidDescriptor :: FieldParser ()
-verifyVoidDescriptor = char jvm_signature_void >> return ()
+verifyVoidDescriptor = void (char jvm_signature_void)
 
 verifyFieldType :: FieldParser ()
 verifyFieldType = verifyBaseType <|> verifyObjectType <|> verifyArrayType

@@ -1,16 +1,18 @@
+{-# LANGUAGE TupleSections #-}
 module Buffer where
 
 import ClassFile
 import ClassFileChecker (checkAttrLength)
-import ClassFileParser (ClassFileParser (getMajorVersion))
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local, withReaderT)
 import Data.Binary (Get, getWord8)
 import Data.Binary.Get (getByteString, getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, isEmpty, runGet)
-import Data.ByteString.Lazy as BL hiding (elem)
+import Data.ByteString.Lazy (ByteString)
+import Data.ByteString.Lazy qualified as BL
 import Data.Char (chr)
-import Data.Text as T hiding (elem)
+import Data.List (singleton)
+import Data.Text qualified as T
 import GHC.Base (assert)
 import Numeric (showHex)
 import Util
@@ -43,51 +45,65 @@ parseVersion = do
     Just version -> return (minor, major, version)
     Nothing -> fail $ "Unknow major version: " ++ show (toInteger major)
 
-parseConstantPoolCount :: Get ConstantPoolCount
+parseConstantPoolCount :: Get U2
 parseConstantPoolCount = getWord16be
 
 -- Start parseConstantPoolInfo
-parseConstantPoolInfo :: MajorVersionReader CPInfo
+parseConstantPoolInfo :: CPReader ConstantPoolInfo
 parseConstantPoolInfo = do
+  cnt <- asks cpCount
+  xss <- parseList (cnt - 1) $ withReaderT cpMajorVersion parseCPInfo
+  let (tag, info) = unzip $ concat xss
+  cp <- ask
+  return cp {cpTags = JVM_Constant_Invalid : tag, cpInfos = Constant_Invalid : info}
+
+data CPTI = CPTI CPTag CPInfo
+
+parseCPInfo :: MajorVersionReader [(CPTag, CPInfo)]
+parseCPInfo = do
   tag <- lift getWord8
   case tag of
-    1 -> lift parseConstantUtf8
-    3 -> lift parseConstantInteger
-    4 -> lift parseConstantFloat
-    5 -> lift parseConstantLong
-    6 -> lift parseConstantDouble
-    7 -> lift parseConstantClass
-    8 -> lift parseConstantString
-    9 -> lift parseConstantFieldref
-    10 -> lift parseConstantMethodref
-    11 -> lift parseConstantInterfaceMethodref
-    12 -> lift parseConstantNameAndType
-    15 -> parseConstantMethodHandle
-    16 -> parseConstantMethodType
-    17 -> parseConstantDynamic
-    18 -> parseConstantInvokeDynamic
-    19 -> parseConstantModule
-    20 -> parseConstantPackage
+    1 -> singleton . (JVM_Constant_Utf8,) <$> lift parseConstantUtf8
+    3 -> singleton . (JVM_Constant_Integer,) <$> lift parseConstantInteger
+    4 -> singleton . (JVM_Constant_Float,) <$> lift parseConstantFloat
+    5 -> do
+      info <- lift parseConstantLong
+      return [(JVM_Constant_Long, info), (JVM_Constant_Invalid, Constant_Invalid)]
+    6 -> do
+      info <- lift parseConstantDouble
+      return [(JVM_Constant_Double, info), (JVM_Constant_Invalid, Constant_Invalid)]
+    7 -> singleton . (JVM_Constant_Class,) <$> lift parseConstantClass
+    8 -> singleton . (JVM_Constant_String,) <$> lift parseConstantString
+    9 -> singleton . (JVM_Constant_Fieldref,) <$> lift parseConstantFieldref
+    10 -> singleton . (JVM_Constant_Methodref,) <$> lift parseConstantMethodref
+    11 -> singleton . (JVM_Constant_InterfaceMethodref,) <$> lift parseConstantInterfaceMethodref
+    12 -> singleton . (JVM_Constant_NameAndType,) <$> lift parseConstantNameAndType
+    15 -> singleton . (JVM_Constant_MethodHandle,) <$> parseConstantMethodHandle
+    16 -> singleton . (JVM_Constant_MethodType,) <$> parseConstantMethodType
+    17 -> singleton . (JVM_Constant_Dynamic,) <$> parseConstantDynamic
+    18 -> singleton . (JVM_Constant_InvokeDynamic,) <$> parseConstantInvokeDynamic
+    19 -> singleton . (JVM_Constant_Module,) <$> parseConstantModule
+    20 -> singleton . (JVM_Constant_Package,) <$> parseConstantPackage
     _ -> fail $ "unknow constant pool tag: " ++ show (toInteger tag)
 
 parseConstantUtf8 :: Get CPInfo
 parseConstantUtf8 = do
   len <- getWord16be
   str <- getByteString $ fromIntegral len
-  return $ Constant_Utf8 $ decodeUtf8Jvm str
+  return $ Constant_Utf8 . ConstantUtf8 $ decodeUtf8Jvm str
 
 parseConstantInteger :: Get CPInfo
-parseConstantInteger = Constant_Integer <$> getInt32be
+parseConstantInteger = Constant_Integer . ConstantInteger <$> getInt32be
 
 parseConstantFloat :: Get CPInfo
-parseConstantFloat = Constant_Float <$> getFloatbe
+parseConstantFloat = Constant_Float . ConstantFloat <$> getFloatbe
 
 -- TODO: Long and Double take up two entries in the constant_pool table
 parseConstantLong :: Get CPInfo
-parseConstantLong = Constant_Long <$> getInt64be
+parseConstantLong = Constant_Long . ConstantLong <$> getInt64be
 
 parseConstantDouble :: Get CPInfo
-parseConstantDouble = Constant_Double <$> getDoublebe
+parseConstantDouble = Constant_Double . ConstantDouble <$> getDoublebe
 
 parseConstantClass :: Get CPInfo
 parseConstantClass = Constant_Class <$> getWord16be
@@ -634,7 +650,7 @@ parseAttributeInfo = do
   let maybeAttrTag = cpUtf8 cp attrNameIdx
   case maybeAttrTag of
     Left err -> error $ show err
-    Right attrTag -> do
+    Right (ConstantUtf8 attrTag) -> do
       let str = T.unpack attrTag
       attr <- case str of
         "ConstantValue" -> parseConstantValue
@@ -672,9 +688,9 @@ parseAttributeInfo = do
 
 type ClassFileReader = ReaderT ClassFile Get
 
-type MajorVersion = U2
+type MajorVersionReader = ReaderT U2 Get
 
-type MajorVersionReader = ReaderT MajorVersion Get
+type CPReader = ReaderT ConstantPoolInfo Get
 
 parseClassFile :: ClassFileReader ClassFile
 parseClassFile = do
@@ -682,7 +698,8 @@ parseClassFile = do
   minorVer <- lift parseMinorVersion
   majorVer <- lift parseMajorVersion
   cpc <- lift parseConstantPoolCount
-  cp <- parseList (cpc - 1) $ withReaderT getMajorVersion parseConstantPoolInfo
+  let cpi = emptyConstantPoolInfo {cpMajorVersion=majorVer, cpCount=cpc}
+  cp <- withReaderT (const cpi) parseConstantPoolInfo
   accFlags <- lift parseAccessFlag
   thisClazz <- lift parseThisClass
   superClazz <- lift parseSuperClass

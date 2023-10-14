@@ -6,6 +6,7 @@
 
 module ClassFile where
 
+import Control.Monad (when)
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
 import Data.Typeable (TypeRep, Typeable, typeOf)
@@ -15,12 +16,16 @@ import Util
 
 type Version = (U2, U2, String)
 
-type ConstantPoolCount = U2
-
 data ConstantPoolInfo = ConstantPoolInfo
-  { cptag :: U1,
-    cpInfo :: CPInfo
+  { cpMajorVersion :: U2,
+    cpCount :: U2,
+    cpTags :: [CPTag],
+    cpInfos :: [CPInfo]
   }
+  deriving (Show)
+
+emptyConstantPoolInfo :: ConstantPoolInfo
+emptyConstantPoolInfo = ConstantPoolInfo 0 0 [] []
 
 type AttrIndex = U2
 
@@ -33,11 +38,12 @@ data ConstNameAndType
   deriving (Show)
 
 data CPInfo
-  = Constant_Utf8 T.Text
-  | Constant_Integer Int32
-  | Constant_Float Float
-  | Constant_Long Int64
-  | Constant_Double Double
+  = Constant_Invalid
+  | Constant_Utf8 ConstantUtf8
+  | Constant_Integer ConstantInteger
+  | Constant_Float ConstantFloat
+  | Constant_Long ConstantLong
+  | Constant_Double ConstantDouble
   | Constant_Class {_name_index :: CPIndex}
   | Constant_String {_string_index :: CPIndex}
   | Constant_Fieldref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
@@ -51,6 +57,37 @@ data CPInfo
   | Constant_Module {_name_index :: CPIndex}
   | Constant_Package {_name_index :: CPIndex}
   deriving (Typeable, Show)
+
+data CPTag
+  = JVM_Constant_Invalid
+  | JVM_Constant_Utf8
+  | JVM_Constant_Integer
+  | JVM_Constant_Float
+  | JVM_Constant_Long
+  | JVM_Constant_Double
+  | JVM_Constant_Class
+  | JVM_Constant_String
+  | JVM_Constant_Fieldref
+  | JVM_Constant_Methodref
+  | JVM_Constant_InterfaceMethodref
+  | JVM_Constant_NameAndType
+  | JVM_Constant_MethodHandle
+  | JVM_Constant_MethodType
+  | JVM_Constant_Dynamic
+  | JVM_Constant_InvokeDynamic
+  | JVM_Constant_Module
+  | JVM_Constant_Package
+  deriving (Show, Eq)
+
+newtype ConstantUtf8 = ConstantUtf8 T.Text deriving (Show)
+
+newtype ConstantInteger = ConstantInteger Int32 deriving (Show)
+
+newtype ConstantFloat = ConstantFloat Float deriving (Show)
+
+newtype ConstantLong = ConstantLong Int64 deriving (Show)
+
+newtype ConstantDouble = ConstantDouble Double deriving (Show)
 
 data ReferenceKind
   = REF_none -- 0
@@ -323,7 +360,7 @@ data ExceptionTable = ExceptionTable
 data ClassFile = ClassFile
   { minorVersion :: U2,
     majorVersion :: U2,
-    constantPool :: [CPInfo],
+    constantPool :: ConstantPoolInfo,
     accessFlags :: U2,
     thisClass :: CPIndex,
     superClass :: CPIndex,
@@ -339,7 +376,7 @@ emptyClassFile =
   ClassFile
     { minorVersion = 0,
       majorVersion = 0,
-      constantPool = [],
+      constantPool = emptyConstantPoolInfo,
       accessFlags = 0,
       thisClass = 0,
       superClass = 0,
@@ -375,30 +412,31 @@ javaVersion version =
     65 -> Just "21"
     _ -> Nothing
 
-class ConstantPool s a where
-  cpSafeIndex :: s a -> U2 -> Maybe U2
-  cpElement :: s a -> U2 -> MyErr a
-  cpCheckType :: TypeRep -> s a -> U2 -> MyErr a
-  cpUtf8 :: s a -> U2 -> MyErr T.Text
-  cpNameAndType :: s a -> U2 -> MyErr ConstNameAndType
+class ConstantPool cp where
+  cpCheckIndex :: cp -> U2 -> MyErr ()
+  cpCheckType :: CPTag -> cp -> U2 -> MyErr ()
+  cpElement :: cp -> U2 -> MyErr CPInfo
+  cpUtf8 :: cp -> U2 -> MyErr ConstantUtf8
+  cpNameAndType :: cp -> U2 -> MyErr ConstNameAndType
 
-instance ConstantPool [] CPInfo where
-  cpSafeIndex xs n =
-    if n > 0 && n <= fromIntegral (length xs)
-      then Just (n - 1)
-      else Nothing
-  cpElement xs n = case cpSafeIndex xs n of
-    Nothing -> Left $ PE $ PoolOutOfBoundsException $ show n ++ "; " ++ show xs
-    Just idx -> Right $ xs !! fromIntegral idx
-  cpCheckType tr xs n = do
-    cp <- cpElement xs n
-    if typeOf cp == tr
-      then Right cp
-      else
-        Left $
-          PE $
-            PoolUnmatchedType $
-              printf "Expected: %s, Actual: %s." (show tr) (show $ typeOf cp)
+instance ConstantPool ConstantPoolInfo where
+  cpCheckIndex :: ConstantPoolInfo -> U2 -> MyErr ()
+  cpCheckIndex cp n = do
+    let count = cpCount cp
+    if n >= 1 && n < count
+      then Right ()
+      else Left $ PE $ PoolOutOfBoundsException $ printf "Index: %d, constant pool count: %d." n count
+  cpElement cp n = do
+    cpCheckIndex cp n
+    return $ cpInfos cp !! fromIntegral n
+  cpCheckType tag cp n = do
+    cpCheckIndex cp n
+    let atag = cpTags cp !! fromIntegral n
+    when (tag /= atag) $
+      Left $
+        ClassFormatError $
+          printf "Expected: %s, Actual: %s" (show tag) (show atag)
+  cpUtf8 :: ConstantPoolInfo -> U2 -> MyErr ConstantUtf8
   cpUtf8 cp n = do
     info <- cpElement cp n
     case info of
@@ -411,4 +449,9 @@ instance ConstantPool [] CPInfo where
       _ -> unmatchedErr "Constant_NameAndType" info
 
 unmatchedErr :: String -> CPInfo -> MyErr a
-unmatchedErr expected actual = Left $ PE $ PoolUnmatchedType $ printf "Expected: %s, Actual: %s." expected $ show actual
+unmatchedErr expected actual =
+  Left $
+    PE $
+      PoolUnmatchedType $
+        printf "Expected: %s, Actual: %s." expected $
+          show actual
