@@ -7,7 +7,6 @@ import ClassFile
 import Control.Monad (when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks, local)
-import Data.Foldable (forM_)
 import Data.Functor (void)
 import Data.Functor.Identity (Identity)
 import Data.Text (Text)
@@ -46,14 +45,14 @@ checkCPInfo_ (Constant_Fieldref fr) = do
   let ConstFieldref cIdx ntIdx = fr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  _ <- getAndCheckFieldName nIdx
-  void $ getAndCheckFieldDesc desIdx
+  _ <- checkFieldName nIdx
+  void $ checkFieldDesc desIdx
 checkCPInfo_ (Constant_Methodref mr) = do
   let ConstMethodref cIdx ntIdx = mr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  name <- getAndCheckMethodName nIdx
-  desc <- getAndCheckMethodDesc desIdx
+  ConstantUtf8 name <- checkMethodName nIdx
+  ConstantUtf8 desc <- checkMethodDesc desIdx
   when (T.head name == jvm_signature_special)
     $ when
       (name /= T.pack "<init>" || T.last desc /= jvm_signature_void)
@@ -65,8 +64,8 @@ checkCPInfo_ (Constant_InterfaceMethodref imr) = do
   let ConstInterfaceMethodref cIdx ntIdx = imr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  name <- getAndCheckMethodName nIdx
-  _ <- getAndCheckMethodDesc desIdx
+  ConstantUtf8 name <- checkMethodName nIdx
+  _ <- checkMethodDesc desIdx
   when (T.head name == jvm_signature_special) $
     lift $
       Left $
@@ -122,7 +121,7 @@ checkCPInfo_ (Constant_MethodHandle h) = do
           cfErr $
             printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
     _ -> return ()
-checkCPInfo_ (Constant_MethodType idx) = undefined
+checkCPInfo_ (Constant_MethodType idx) = void $ checkMethodDesc idx 
 checkCPInfo_ (Constant_Dynamic attrIdx idx) = undefined
 checkCPInfo_ (Constant_InvokeDynamic attrIdx idx) = undefined
 checkCPInfo_ (Constant_Module idx) = undefined
@@ -180,8 +179,8 @@ checkConstantLong = undefined
 checkConstantDouble :: U2 -> CPReader ()
 checkConstantDouble = undefined
 
-checkConstantClass :: U2 -> CPReader Text
-checkConstantClass = checkUtf8 verifyLegalClassName
+checkConstantClass :: U2 -> CPReader ConstantUtf8
+checkConstantClass = utf8Checker verifyLegalClassName
 
 checkConstantString :: U2 -> CPReader ()
 checkConstantString = undefined
@@ -235,44 +234,43 @@ checkConstantPackage :: U2 -> CPReader ()
 checkConstantPackage = undefined
 
 --------------------------
-checkUtf8 :: (Text -> Maybe String) -> U2 -> CPReader Text
-checkUtf8 checker idx = do
+utf8Checker :: (Text -> MyErr Text) -> U2 -> CPReader ConstantUtf8
+utf8Checker checker idx = do
   cp <- asks envPool
-  ConstantUtf8 name <- lift $ cpUtf8 cp idx
-  case checker name of
-    Nothing -> return name
-    Just str -> lift $ Left $ ClassFormatError str
+  r@(ConstantUtf8 name) <- lift $ cpUtf8 cp idx
+  _ <- lift $ checker name
+  return r 
 
-getAndCheckFieldDesc :: U2 -> CPReader Text
-getAndCheckFieldDesc = checkUtf8 runParseFieldDescriptor
+checkFieldDesc :: U2 -> CPReader ConstantUtf8
+checkFieldDesc = utf8Checker runParseFieldDescriptor
 
-getAndCheckMethodDesc :: U2 -> CPReader Text
-getAndCheckMethodDesc = checkUtf8 runParseMethodDescriptor
+checkMethodDesc :: U2 -> CPReader ConstantUtf8
+checkMethodDesc = utf8Checker runParseMethodDescriptor
 
-getAndCheckFieldName :: U2 -> CPReader Text
-getAndCheckFieldName = checkUtf8 verifyLegalFieldName
+checkFieldName :: U2 -> CPReader ConstantUtf8
+checkFieldName = utf8Checker verifyLegalFieldName
 
-getAndCheckMethodName :: U2 -> CPReader Text
-getAndCheckMethodName = checkUtf8 verifyLegalMethodName
+checkMethodName :: U2 -> CPReader ConstantUtf8
+checkMethodName = utf8Checker verifyLegalMethodName
 
 data LegalTag = LegalClass | LegalField | LegalMethod deriving (Eq)
 
-verifyLegalClassName :: Text -> Maybe String
+verifyLegalClassName :: Text -> MyErr Text
 verifyLegalClassName name
   | T.head name == jvm_signature_array = runParseFieldDescriptor name
-  | verifyUnqualifiedName LegalClass name = Nothing
-  | otherwise = Just $ printf "Illegal class name \"%s\"." name
+  | verifyUnqualifiedName LegalClass name = return name
+  | otherwise = cfErr $ printf "Illegal class name \"%s\"." name
 
-verifyLegalFieldName :: Text -> Maybe String
+verifyLegalFieldName :: Text -> MyErr Text
 verifyLegalFieldName name
-  | verifyUnqualifiedName LegalField name = Nothing
-  | otherwise = Just $ printf "Illegal field name \"%s\"." name
+  | verifyUnqualifiedName LegalField name = return name
+  | otherwise = cfErr $ printf "Illegal field name \"%s\"." name
 
-verifyLegalMethodName :: Text -> Maybe String
+verifyLegalMethodName :: Text -> MyErr Text
 verifyLegalMethodName name
-  | name == T.pack "<init>" || name == T.pack "<clinit>" = Nothing
-  | verifyUnqualifiedName LegalMethod name = Nothing
-  | otherwise = Just $ printf "Illegal method name \"%s\"." name
+  | name == T.pack "<init>" || name == T.pack "<clinit>" = return name
+  | verifyUnqualifiedName LegalMethod name = return name
+  | otherwise = cfErr $ printf "Illegal method name \"%s\"." name
 
 verifyUnqualifiedName :: LegalTag -> Text -> Bool
 verifyUnqualifiedName _ name | T.null name = False
@@ -303,17 +301,17 @@ type FieldParser = ParsecT Text () Identity
 
 data FieldType = BaseType | ObjectType | ArrayType | VoidType
 
-runParseFieldDescriptor :: Text -> Maybe String
+runParseFieldDescriptor :: Text -> MyErr Text
 runParseFieldDescriptor name =
   case runP verifyFieldDescriptor () "fielddesc" name of
-    Left err -> Just $ show err
-    Right _ -> Nothing
+    Left err -> cfErr $ show err
+    Right _ -> return name
 
-runParseMethodDescriptor :: Text -> Maybe String
+runParseMethodDescriptor :: Text -> MyErr Text
 runParseMethodDescriptor name =
   case runP verifyMethodDescriptor () "methoddesc" name of
-    Left err -> Just $ show err
-    Right _ -> Nothing
+    Left err -> cfErr $ show err
+    Right _ -> return name
 
 verifyMethodDescriptor :: FieldParser ()
 verifyMethodDescriptor = do
@@ -355,7 +353,9 @@ verifyObjectType :: FieldParser ()
 verifyObjectType = do
   _ <- char jvm_signature_class
   name <- manyTill anyChar (char jvm_signature_endclass)
-  forM_ (verifyLegalClassName $ T.pack name) fail
+  case verifyLegalClassName $ T.pack name of
+    Left _ -> fail $ printf "Illegal class name of ObjectType: %s." name
+    Right _ -> return ()
 
 verifyArrayType :: FieldParser ()
 verifyArrayType = do
