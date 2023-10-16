@@ -208,26 +208,8 @@ checkConstantUtf8 idx = do
   cp <- asks envPool
   lift $ cpUtf8 cp idx
 
-checkConstantInteger :: U2 -> CPReader ()
-checkConstantInteger = undefined
-
-checkConstantFloat :: U2 -> CPReader ()
-checkConstantFloat = undefined
-
-checkConstantLong :: U2 -> CPReader ()
-checkConstantLong = undefined
-
-checkConstantDouble :: U2 -> CPReader ()
-checkConstantDouble = undefined
-
 checkConstantClass :: U2 -> CPReader ConstantUtf8
 checkConstantClass = utf8Checker verifyLegalClassName
-
-checkConstantString :: U2 -> CPReader ()
-checkConstantString = undefined
-
-checkConstantFieldref :: U2 -> CPReader ()
-checkConstantFieldref = undefined -- no need
 
 checkConstantMethodref :: U2 -> CPReader ConstMethodref
 checkConstantMethodref idx = do
@@ -259,25 +241,6 @@ checkConstantNameAndType idx = do
   _ <- checkConstantUtf8 dIdx
   return r
 
-checkConstantMethodHandle :: U2 -> CPReader ()
-checkConstantMethodHandle = undefined
-
-checkConstantMethodType :: U2 -> CPReader ()
-checkConstantMethodType = undefined
-
-checkConstantDynamic :: U2 -> CPReader ()
-checkConstantDynamic = undefined
-
-checkConstantInvokeDynamic :: U2 -> CPReader ()
-checkConstantInvokeDynamic = undefined
-
-checkConstantModule :: U2 -> CPReader ()
-checkConstantModule = undefined
-
-checkConstantPackage :: U2 -> CPReader ()
-checkConstantPackage = undefined
-
---------------------------
 utf8Checker :: (Text -> MyErr Text) -> U2 -> CPReader ConstantUtf8
 utf8Checker checker idx = do
   cp <- asks envPool
