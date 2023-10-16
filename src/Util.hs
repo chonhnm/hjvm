@@ -2,8 +2,7 @@ module Util
   ( decodeUtf8Jvm,
     module ClassFileConsts,
     AppErr (..),
-    ParseError (..),
-    RuntimeError (..),
+    CheckedError (..),
     MyErr,
   )
 where
@@ -18,18 +17,16 @@ decodeUtf8Jvm :: B.ByteString -> Text
 decodeUtf8Jvm = decodeUtf8
 
 data AppErr
-  = PE ParseError
-  | RE RuntimeError
+  = PE CheckedError
   | ClassFormatError String
   | UnknownErr String
   deriving (Show)
 
-data ParseError
+data CheckedError
   = PoolOutOfBoundsException String
   | PoolUnmatchedType String
   | NonExausted
   deriving (Show)
 
-data RuntimeError = OutOfBound String | ServerError String deriving (Show)
 
 type MyErr = Either AppErr

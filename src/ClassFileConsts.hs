@@ -1,7 +1,7 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
 {-# HLINT ignore "Use camelCase" #-}
 {-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 module ClassFileConsts where
 
 import Data.Word (Word16, Word32, Word64, Word8)
@@ -20,6 +20,7 @@ java_classfile_magic = 0xCAFEBABE
 java_min_support_version :: U2
 java_min_support_version = 45
 
+-- java version
 java_1_5_version :: U2
 java_1_5_version = 49
 
@@ -75,22 +76,68 @@ jvm_classfile_major_version :: U2
 jvm_classfile_major_version = 65
 
 -- Type signatures
-jvm_signature_slash         = '/'
-jvm_signature_dot           = '.'
-jvm_signature_special       = '<'
-jvm_signature_endspecial    = '>'
-jvm_signature_array         = '['
-jvm_signature_byte          = 'B'
-jvm_signature_char          = 'C'
-jvm_signature_class         = 'L'
-jvm_signature_endclass      = ';'
-jvm_signature_enum          = 'E'
-jvm_signature_float         = 'F'
-jvm_signature_double        = 'D'
-jvm_signature_func          = '('
-jvm_signature_endfunc       = ')'
-jvm_signature_int           = 'I'
-jvm_signature_long          = 'J'
-jvm_signature_short         = 'S'
-jvm_signature_void          = 'V'
-jvm_signature_boolean       = 'Z'
+jvm_signature_slash = '/'
+
+jvm_signature_dot = '.'
+
+jvm_signature_special = '<'
+
+jvm_signature_endspecial = '>'
+
+jvm_signature_array = '['
+
+jvm_signature_byte = 'B'
+
+jvm_signature_char = 'C'
+
+jvm_signature_class = 'L'
+
+jvm_signature_endclass = ';'
+
+jvm_signature_enum = 'E'
+
+jvm_signature_float = 'F'
+
+jvm_signature_double = 'D'
+
+jvm_signature_func = '('
+
+jvm_signature_endfunc = ')'
+
+jvm_signature_int = 'I'
+
+jvm_signature_long = 'J'
+
+jvm_signature_short = 'S'
+
+jvm_signature_void = 'V'
+
+jvm_signature_boolean = 'Z'
+
+-- access flags
+jvm_acc_public :: U2
+jvm_acc_public = 0x0001
+
+jvm_acc_final :: U2
+jvm_acc_final = 0x0010
+
+jvm_acc_super :: U2
+jvm_acc_super = 0x0020
+
+jvm_acc_interface :: U2
+jvm_acc_interface = 0x0200
+
+jvm_acc_abstract :: U2
+jvm_acc_abstract = 0x0400
+
+jvm_acc_synthetic :: U2
+jvm_acc_synthetic = 0x1000
+
+jvm_acc_annotation :: U2
+jvm_acc_annotation = 0x2000
+
+jvm_acc_enum :: U2
+jvm_acc_enum = 0x4000
+
+jvm_acc_module :: U2
+jvm_acc_module = 0x8000

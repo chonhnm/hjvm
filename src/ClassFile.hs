@@ -1,7 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# HLINT ignore "Use camelCase" #-}
-{-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module ClassFile where
@@ -9,7 +8,7 @@ module ClassFile where
 import Control.Monad (when)
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
-import Data.Typeable (TypeRep, Typeable, typeOf)
+import Data.Typeable (Typeable)
 import Numeric (showHex)
 import Text.Printf (printf)
 import Util
@@ -99,19 +98,19 @@ data ConstFieldref
   = ConstFieldref
       CPIndex -- class_index
       CPIndex -- name_and_type_index
-      deriving Show
+  deriving (Show)
 
 data ConstMethodref
   = ConstMethodref
       CPIndex -- class_index
       CPIndex -- name_and_type_index
-      deriving Show
+  deriving (Show)
 
 data ConstInterfaceMethodref
   = ConstInterfaceMethodref
       CPIndex -- class_index
       CPIndex -- name_and_type_index
-      deriving Show
+  deriving (Show)
 
 data ReferenceKind
   = REF_none -- 0
@@ -125,40 +124,6 @@ data ReferenceKind
   | REF_newInvokeSpecial -- 8
   | REF_invokeInterface -- 9
   deriving (Enum, Eq, Show)
-
-data ClassAccessFlag
-  = ACC_PUBLIC
-  | ACC_FINAL
-  | ACC_SUPER
-  | ACC_INTERFACE
-  | ACC_ABSTRACT
-  | ACC_SYNTHETIC
-  | ACC_ANNOTATION
-  | ACC_ENUM
-  | ACC_MODULE
-
-instance Enum ClassAccessFlag where
-  fromEnum a = case a of
-    ACC_PUBLIC -> 0x0001
-    ACC_FINAL -> 0x0010
-    ACC_SUPER -> 0x0020
-    ACC_INTERFACE -> 0x0200
-    ACC_ABSTRACT -> 0x0400
-    ACC_SYNTHETIC -> 0x1000
-    ACC_ANNOTATION -> 0x2000
-    ACC_ENUM -> 0x4000
-    ACC_MODULE -> 0x8000
-  toEnum a = case a of
-    0x0001 -> ACC_PUBLIC
-    0x0010 -> ACC_FINAL
-    0x0020 -> ACC_SUPER
-    0x0200 -> ACC_INTERFACE
-    0x0400 -> ACC_ABSTRACT
-    0x1000 -> ACC_SYNTHETIC
-    0x2000 -> ACC_ANNOTATION
-    0x4000 -> ACC_ENUM
-    0x8000 -> ACC_MODULE
-    _ -> error $ "Invalid Class Access Flag: " ++ show (showHex a "")
 
 data FieldInfo = FieldInfo
   { fi_accessFlags :: FieldAccessFlag,
@@ -381,11 +346,13 @@ data ExceptionTable = ExceptionTable
   }
   deriving (Show)
 
+newtype AccessFlags = AccessFlags U2 deriving (Show)
+
 data ClassFile = ClassFile
   { minorVersion :: U2,
     majorVersion :: U2,
     constantPool :: ConstantPoolInfo,
-    accessFlags :: U2,
+    accessFlags :: AccessFlags,
     thisClass :: CPIndex,
     superClass :: CPIndex,
     interfaces :: [CPIndex],
@@ -401,7 +368,7 @@ emptyClassFile =
     { minorVersion = 0,
       majorVersion = 0,
       constantPool = emptyConstantPoolInfo,
-      accessFlags = 0,
+      accessFlags = AccessFlags 0,
       thisClass = 0,
       superClass = 0,
       interfaces = [],
@@ -487,12 +454,12 @@ instance ConstantPool ConstantPoolInfo where
     info <- cpElement cp n
     case info of
       Constant_Methodref x -> Right x
-      _ -> unmatchedErr "Constant_Methodref" info    
+      _ -> unmatchedErr "Constant_Methodref" info
   cpInterfaceMethodref cp n = do
     info <- cpElement cp n
     case info of
       Constant_InterfaceMethodref x -> Right x
-      _ -> unmatchedErr "Constant_InterfaceMethodref" info    
+      _ -> unmatchedErr "Constant_InterfaceMethodref" info
 
 unmatchedErr :: String -> CPInfo -> MyErr a
 unmatchedErr expected actual =

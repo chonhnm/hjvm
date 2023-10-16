@@ -163,8 +163,8 @@ parseConstantPackage = do
   assert (major >= java_9_version) Constant_Module <$> lift getWord16be
 
 -- End parseConstantPoolInfo
-parseAccessFlag :: Get U2
-parseAccessFlag = getWord16be
+parseAccessFlag :: Get AccessFlags
+parseAccessFlag = AccessFlags <$> getWord16be
 
 parseThisClass :: Get U2
 parseThisClass = getWord16be

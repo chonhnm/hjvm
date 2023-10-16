@@ -3,8 +3,9 @@
 {-# HLINT ignore "Use camelCase" #-}
 module ClassFileParser where
 
+import AccessFlags (IAccessFlags (is_module))
 import ClassFile
-import Control.Monad (when)
+import Control.Monad (unless, when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks, local)
 import Data.Functor (void)
@@ -12,16 +13,34 @@ import Data.Functor.Identity (Identity)
 import Data.Text (Text)
 import Data.Text qualified as T
 import Text.Parsec
+import Text.Parsec.Error (errorMessages, messageString)
 import Text.Printf (printf)
 import Util
+
+type CPReader = ReaderT Env MyErr
+
+data Env = Env
+  { envClassFile :: ClassFile,
+    envPool :: ConstantPoolInfo,
+    envCurPoolIdx :: U2
+  }
 
 class ClassFileParser cf where
   getMajorVersion :: cf -> U2
   getConstantPoolInfo :: cf -> ConstantPoolInfo
+  getBootstapMethods :: cf -> [BootstrapMethod]
 
 instance ClassFileParser ClassFile where
   getMajorVersion = majorVersion
   getConstantPoolInfo = constantPool
+  getBootstapMethods cf =
+    let attrs = attributes cf
+        infos = map attr_info attrs
+     in foldl bt [] infos
+    where
+      bt [] (BootstrapMethods xs) = xs
+      bt [] _ = []
+      bt val _ = val
 
 class CPInfoChecker a where
   checkCPInfo :: a -> CPReader ()
@@ -34,10 +53,10 @@ checkCPInfo_ (Constant_Utf8 _) = return ()
 checkCPInfo_ (Constant_Integer _) = return ()
 checkCPInfo_ (Constant_Float _) = return ()
 checkCPInfo_ (Constant_Long _) = do
-  idx <- asks envCurIdx
+  idx <- asks envCurPoolIdx
   checkConstantInvalid (idx + 1)
 checkCPInfo_ (Constant_Double _) = do
-  idx <- asks envCurIdx
+  idx <- asks envCurPoolIdx
   checkConstantInvalid (idx + 1)
 checkCPInfo_ (Constant_Class idx) = void $ checkConstantClass idx
 checkCPInfo_ (Constant_String idx) = void $ checkConstantUtf8 idx
@@ -71,7 +90,7 @@ checkCPInfo_ (Constant_InterfaceMethodref imr) = do
       Left $
         ClassFormatError $
           printf "Unexpected interface method name and type: %s:%s" name
--- Already checked by Fieldref or Methodref
+-- Already checked by Fieldref or Methodref or Dynamic or InvokeDynamic
 checkCPInfo_ (Constant_NameAndType _) = return ()
 checkCPInfo_ (Constant_MethodHandle h) = do
   cp <- asks envPool
@@ -121,23 +140,30 @@ checkCPInfo_ (Constant_MethodHandle h) = do
           cfErr $
             printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
     _ -> return ()
-checkCPInfo_ (Constant_MethodType idx) = void $ checkMethodDesc idx 
-checkCPInfo_ (Constant_Dynamic attrIdx idx) = undefined
-checkCPInfo_ (Constant_InvokeDynamic attrIdx idx) = undefined
-checkCPInfo_ (Constant_Module idx) = undefined
-checkCPInfo_ (Constant_Package idx) = undefined
-checkCPInfo_ Constant_Invalid = undefined
-
-type CPReader = ReaderT Env MyErr
+checkCPInfo_ (Constant_MethodType idx) = void $ checkMethodDesc idx
+checkCPInfo_ (Constant_Dynamic attrIdx idx) = do
+  checkBootstrapAttrIdx attrIdx
+  ConstNameAndType _ dIdx <- checkConstantNameAndType idx
+  void $ checkFieldDesc dIdx
+checkCPInfo_ (Constant_InvokeDynamic attrIdx idx) = do
+  checkBootstrapAttrIdx attrIdx
+  ConstNameAndType _ dIdx <- checkConstantNameAndType idx
+  void $ checkMethodDesc dIdx
+checkCPInfo_ (Constant_Module idx) = do
+  checkIsModule
+  void $ checkModuleName idx
+checkCPInfo_ (Constant_Package idx) = do
+  checkIsModule
+  void $ checkPackageName idx
+checkCPInfo_ Constant_Invalid = return ()
 
 cfErr :: String -> Either AppErr b
 cfErr str = Left $ ClassFormatError str
 
-data Env = Env {envPool :: ConstantPoolInfo, envCurIdx :: U2}
-
-checkConstantPoolInfo :: ConstantPoolInfo -> MyErr ()
-checkConstantPoolInfo cp =
+checkConstantPoolInfo :: ClassFile -> MyErr ()
+checkConstantPoolInfo cf =
   do
+    let cp = constantPool cf
     let tags = cpTags cp
     let infos = cpInfos cp
     let cnt = cpCount cp
@@ -146,16 +172,31 @@ checkConstantPoolInfo cp =
     when (cnt <= 0) $ cfErr "Constant pool count shoud greater than zero."
     when (head tags /= JVM_Constant_Invalid) $
       cfErr "Constant pool entry at zero is not invalid."
-    runReaderT (doCheckCPInfo infos) (Env cp 0)
+    runReaderT (doCheckCPInfo infos) (Env cf cp 0)
 
 doCheckCPInfo :: [CPInfo] -> CPReader ()
 doCheckCPInfo [] = return ()
 doCheckCPInfo (x : xs) = do
   checkCPInfo x
   local incIdx $ doCheckCPInfo xs
+  where
+    incIdx (Env cf cp idx) = Env cf cp (idx + 1)
 
-incIdx :: Env -> Env
-incIdx (Env cp idx) = Env cp (idx + 1)
+checkIsModule :: CPReader ()
+checkIsModule = do
+  cf <- asks envClassFile
+  let flags = accessFlags cf
+  let isModule = is_module flags
+  unless isModule $ lift $ cfErr "Class File is not module, but contains a constant module info."
+
+checkBootstrapAttrIdx :: U2 -> CPReader ()
+checkBootstrapAttrIdx idx = do
+  cf <- asks envClassFile
+  let cnt = fromIntegral . length $ getBootstapMethods cf
+  when (idx < 0 || idx >= cnt) $
+    lift $
+      cfErr $
+        printf "Bootstrap attr count: %d, attr index: %d." cnt idx
 
 checkConstantInvalid :: U2 -> CPReader ()
 checkConstantInvalid idx = do
@@ -213,7 +254,10 @@ checkConstantInterfaceMethodref_name idx = do
 checkConstantNameAndType :: U2 -> CPReader ConstNameAndType
 checkConstantNameAndType idx = do
   cp <- asks envPool
-  lift $ cpNameAndType cp idx
+  r@(ConstNameAndType nIdx dIdx) <- lift $ cpNameAndType cp idx
+  _ <- checkConstantUtf8 nIdx
+  _ <- checkConstantUtf8 dIdx
+  return r
 
 checkConstantMethodHandle :: U2 -> CPReader ()
 checkConstantMethodHandle = undefined
@@ -239,7 +283,7 @@ utf8Checker checker idx = do
   cp <- asks envPool
   r@(ConstantUtf8 name) <- lift $ cpUtf8 cp idx
   _ <- lift $ checker name
-  return r 
+  return r
 
 checkFieldDesc :: U2 -> CPReader ConstantUtf8
 checkFieldDesc = utf8Checker runParseFieldDescriptor
@@ -253,7 +297,24 @@ checkFieldName = utf8Checker verifyLegalFieldName
 checkMethodName :: U2 -> CPReader ConstantUtf8
 checkMethodName = utf8Checker verifyLegalMethodName
 
+checkModuleName :: U2 -> CPReader ConstantUtf8
+checkModuleName = utf8Checker verifyLegalModuleName
+
+checkPackageName :: U2 -> CPReader ConstantUtf8
+checkPackageName = utf8Checker verifyLegalClassName
+
 data LegalTag = LegalClass | LegalField | LegalMethod deriving (Eq)
+
+showErrMsg :: ParseError -> String
+showErrMsg err =
+  let msg = errorMessages err
+   in messageString $ last msg
+
+verifyLegalModuleName :: Text -> MyErr Text
+verifyLegalModuleName name =
+  case runP parseModuleName () "modulename" name of
+    Left err -> cfErr $ showErrMsg err
+    Right _ -> return name
 
 verifyLegalClassName :: Text -> MyErr Text
 verifyLegalClassName name
@@ -297,7 +358,7 @@ verifyUnqualifiedName tag name =
           False
     checkIt _ = True
 
-type FieldParser = ParsecT Text () Identity
+type TextParser = ParsecT Text () Identity
 
 data FieldType = BaseType | ObjectType | ArrayType | VoidType
 
@@ -313,7 +374,7 @@ runParseMethodDescriptor name =
     Left err -> cfErr $ show err
     Right _ -> return name
 
-verifyMethodDescriptor :: FieldParser ()
+verifyMethodDescriptor :: TextParser ()
 verifyMethodDescriptor = do
   _ <- char jvm_signature_func
   xs <- many verifyFieldType
@@ -321,20 +382,20 @@ verifyMethodDescriptor = do
   _ <- char jvm_signature_endfunc
   verifyReturnDescriptor
 
-verifyFieldDescriptor :: FieldParser ()
+verifyFieldDescriptor :: TextParser ()
 verifyFieldDescriptor = verifyFieldType >> eof
 
-verifyReturnDescriptor :: FieldParser ()
+verifyReturnDescriptor :: TextParser ()
 verifyReturnDescriptor = do
   verifyFieldType <|> verifyVoidDescriptor
 
-verifyVoidDescriptor :: FieldParser ()
+verifyVoidDescriptor :: TextParser ()
 verifyVoidDescriptor = void (char jvm_signature_void)
 
-verifyFieldType :: FieldParser ()
+verifyFieldType :: TextParser ()
 verifyFieldType = verifyBaseType <|> verifyObjectType <|> verifyArrayType
 
-verifyBaseType :: FieldParser ()
+verifyBaseType :: TextParser ()
 verifyBaseType = do
   _ <-
     oneOf
@@ -349,7 +410,7 @@ verifyBaseType = do
       ]
   return ()
 
-verifyObjectType :: FieldParser ()
+verifyObjectType :: TextParser ()
 verifyObjectType = do
   _ <- char jvm_signature_class
   name <- manyTill anyChar (char jvm_signature_endclass)
@@ -357,9 +418,22 @@ verifyObjectType = do
     Left _ -> fail $ printf "Illegal class name of ObjectType: %s." name
     Right _ -> return ()
 
-verifyArrayType :: FieldParser ()
+verifyArrayType :: TextParser ()
 verifyArrayType = do
   xs <- many1 $ char jvm_signature_array
   when (length xs > 255) $ fail $ "Array type with over 255 dimensions: " ++ show xs
   verifyFieldType
   return ()
+
+parseModuleName :: TextParser [Char]
+parseModuleName = do
+  many1 parseModuleChar
+
+parseModuleChar :: TextParser Char
+parseModuleChar = do
+  ch <- anyChar
+  when (ch >= '\x0' && ch <= '\x001F') $ fail "Module name contain char below 0x001F."
+  when (ch == ':' && ch == '@') $ fail "Char ':' or '@' in module name should be escaped."
+  if ch == '\\'
+    then char '\\' <|> char ':' <|> char '@' <?> "Expected escaped char '\\' ':' or '@'."
+    else return ch
