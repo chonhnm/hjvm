@@ -37,6 +37,12 @@ data ConstNameAndType
       CPIndex -- descriptor_index
   deriving (Show)
 
+data ConstMethodHandle = ConstMethodHandle
+  { _reference_kind :: ReferenceKind,
+    _reference_index :: CPIndex
+  }
+  deriving (Show)
+
 data CPInfo
   = Constant_Invalid
   | Constant_Utf8 ConstantUtf8
@@ -46,11 +52,11 @@ data CPInfo
   | Constant_Double ConstantDouble
   | Constant_Class {_name_index :: CPIndex}
   | Constant_String {_string_index :: CPIndex}
-  | Constant_Fieldref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
-  | Constant_Methodref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
-  | Constant_InterfaceMethodref {_class_index :: CPIndex, _name_and_type_index :: CPIndex}
+  | Constant_Fieldref ConstFieldref
+  | Constant_Methodref ConstMethodref
+  | Constant_InterfaceMethodref ConstInterfaceMethodref
   | Constant_NameAndType ConstNameAndType
-  | Constant_MethodHandle {_reference_kind :: ReferenceKind, _reference_index :: CPIndex}
+  | Constant_MethodHandle ConstMethodHandle
   | Constant_MethodType {_descriptor_index :: CPIndex}
   | Constant_Dynamic {_bootstrap_method_attr_index :: AttrIndex, _name_and_type_index :: CPIndex}
   | Constant_InvokeDynamic {_bootstrap_method_attr_index :: AttrIndex, _name_and_type_index :: CPIndex}
@@ -89,6 +95,24 @@ newtype ConstantLong = ConstantLong Int64 deriving (Show)
 
 newtype ConstantDouble = ConstantDouble Double deriving (Show)
 
+data ConstFieldref
+  = ConstFieldref
+      CPIndex -- class_index
+      CPIndex -- name_and_type_index
+      deriving Show
+
+data ConstMethodref
+  = ConstMethodref
+      CPIndex -- class_index
+      CPIndex -- name_and_type_index
+      deriving Show
+
+data ConstInterfaceMethodref
+  = ConstInterfaceMethodref
+      CPIndex -- class_index
+      CPIndex -- name_and_type_index
+      deriving Show
+
 data ReferenceKind
   = REF_none -- 0
   | REF_getField -- 1
@@ -100,7 +124,7 @@ data ReferenceKind
   | REF_invokeSpecial -- 7
   | REF_newInvokeSpecial -- 8
   | REF_invokeInterface -- 9
-  deriving (Enum, Show)
+  deriving (Enum, Eq, Show)
 
 data ClassAccessFlag
   = ACC_PUBLIC
@@ -419,6 +443,9 @@ class ConstantPool cp where
   cpTag :: cp -> U2 -> MyErr CPTag
   cpUtf8 :: cp -> U2 -> MyErr ConstantUtf8
   cpNameAndType :: cp -> U2 -> MyErr ConstNameAndType
+  cpMethodHandler :: cp -> U2 -> MyErr ConstMethodHandle
+  cpMethodref :: cp -> U2 -> MyErr ConstMethodref
+  cpInterfaceMethodref :: cp -> U2 -> MyErr ConstInterfaceMethodref
 
 instance ConstantPool ConstantPoolInfo where
   cpCheckIndex :: ConstantPoolInfo -> U2 -> MyErr ()
@@ -432,7 +459,7 @@ instance ConstantPool ConstantPoolInfo where
     return $ cpInfos cp !! fromIntegral n
   cpTag cp n = do
     cpCheckIndex cp n
-    return $ cpTags cp !! fromIntegral n  
+    return $ cpTags cp !! fromIntegral n
   cpCheckTag tag cp n = do
     cpCheckIndex cp n
     let atag = cpTags cp !! fromIntegral n
@@ -451,6 +478,21 @@ instance ConstantPool ConstantPoolInfo where
     case info of
       Constant_NameAndType x -> Right x
       _ -> unmatchedErr "Constant_NameAndType" info
+  cpMethodHandler cp n = do
+    info <- cpElement cp n
+    case info of
+      Constant_MethodHandle x -> Right x
+      _ -> unmatchedErr "Constant_MethodHandle" info
+  cpMethodref cp n = do
+    info <- cpElement cp n
+    case info of
+      Constant_Methodref x -> Right x
+      _ -> unmatchedErr "Constant_Methodref" info    
+  cpInterfaceMethodref cp n = do
+    info <- cpElement cp n
+    case info of
+      Constant_InterfaceMethodref x -> Right x
+      _ -> unmatchedErr "Constant_InterfaceMethodref" info    
 
 unmatchedErr :: String -> CPInfo -> MyErr a
 unmatchedErr expected actual =

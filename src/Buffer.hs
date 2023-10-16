@@ -1,4 +1,5 @@
 {-# LANGUAGE TupleSections #-}
+
 module Buffer where
 
 import ClassFile
@@ -98,7 +99,6 @@ parseConstantInteger = Constant_Integer . ConstantInteger <$> getInt32be
 parseConstantFloat :: Get CPInfo
 parseConstantFloat = Constant_Float . ConstantFloat <$> getFloatbe
 
--- TODO: Long and Double take up two entries in the constant_pool table
 parseConstantLong :: Get CPInfo
 parseConstantLong = Constant_Long . ConstantLong <$> getInt64be
 
@@ -112,13 +112,19 @@ parseConstantString :: Get CPInfo
 parseConstantString = Constant_Class <$> getWord16be
 
 parseConstantFieldref :: Get CPInfo
-parseConstantFieldref = liftM2 Constant_Fieldref getWord16be getWord16be
+parseConstantFieldref = do
+  idx <- getWord16be
+  Constant_Fieldref . ConstFieldref idx <$> getWord16be
 
 parseConstantMethodref :: Get CPInfo
-parseConstantMethodref = liftM2 Constant_Methodref getWord16be getWord16be
+parseConstantMethodref = do
+  idx <- getWord16be
+  Constant_Methodref . ConstMethodref idx <$> getWord16be
 
 parseConstantInterfaceMethodref :: Get CPInfo
-parseConstantInterfaceMethodref = liftM2 Constant_InterfaceMethodref getWord16be getWord16be
+parseConstantInterfaceMethodref = do
+  idx <- getWord16be
+  Constant_InterfaceMethodref . ConstInterfaceMethodref idx <$> getWord16be
 
 parseConstantNameAndType :: Get CPInfo
 parseConstantNameAndType = do
@@ -129,7 +135,7 @@ parseConstantMethodHandle :: MajorVersionReader CPInfo
 parseConstantMethodHandle = do
   major <- ask
   kind <- assert (major >= java_7_version) lift getWord8
-  Constant_MethodHandle (toEnum $ fromIntegral kind) <$> lift getWord16be
+  Constant_MethodHandle . ConstMethodHandle (toEnum $ fromIntegral kind) <$> lift getWord16be
 
 parseConstantMethodType :: MajorVersionReader CPInfo
 parseConstantMethodType = do
@@ -698,7 +704,7 @@ parseClassFile = do
   minorVer <- lift parseMinorVersion
   majorVer <- lift parseMajorVersion
   cpc <- lift parseConstantPoolCount
-  let cpi = emptyConstantPoolInfo {cpMajorVersion=majorVer, cpCount=cpc}
+  let cpi = emptyConstantPoolInfo {cpMajorVersion = majorVer, cpCount = cpc}
   cp <- withReaderT (const cpi) parseConstantPoolInfo
   accFlags <- lift parseAccessFlag
   thisClazz <- lift parseThisClass

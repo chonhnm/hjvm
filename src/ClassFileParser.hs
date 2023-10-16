@@ -1,9 +1,12 @@
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use camelCase" #-}
 module ClassFileParser where
 
 import ClassFile
 import Control.Monad (when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
-import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local)
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks, local)
 import Data.Foldable (forM_)
 import Data.Functor (void)
 import Data.Functor.Identity (Identity)
@@ -28,7 +31,7 @@ instance CPInfoChecker CPInfo where
   checkCPInfo = checkCPInfo_
 
 checkCPInfo_ :: CPInfo -> CPReader ()
-checkCPInfo_ (Constant_Utf8 _) = undefined
+checkCPInfo_ (Constant_Utf8 _) = return ()
 checkCPInfo_ (Constant_Integer _) = return ()
 checkCPInfo_ (Constant_Float _) = return ()
 checkCPInfo_ (Constant_Long _) = do
@@ -39,12 +42,14 @@ checkCPInfo_ (Constant_Double _) = do
   checkConstantInvalid (idx + 1)
 checkCPInfo_ (Constant_Class idx) = void $ checkConstantClass idx
 checkCPInfo_ (Constant_String idx) = void $ checkConstantUtf8 idx
-checkCPInfo_ (Constant_Fieldref cIdx ntIdx) = do
+checkCPInfo_ (Constant_Fieldref fr) = do
+  let ConstFieldref cIdx ntIdx = fr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
   _ <- getAndCheckFieldName nIdx
   void $ getAndCheckFieldDesc desIdx
-checkCPInfo_ (Constant_Methodref cIdx ntIdx) = do
+checkCPInfo_ (Constant_Methodref mr) = do
+  let ConstMethodref cIdx ntIdx = mr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
   name <- getAndCheckMethodName nIdx
@@ -56,7 +61,8 @@ checkCPInfo_ (Constant_Methodref cIdx ntIdx) = do
     $ Left
     $ ClassFormatError
     $ printf "Unexpected method name and type: %s:%s" name desc
-checkCPInfo_ (Constant_InterfaceMethodref cIdx ntIdx) = do
+checkCPInfo_ (Constant_InterfaceMethodref imr) = do
+  let ConstInterfaceMethodref cIdx ntIdx = imr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
   name <- getAndCheckMethodName nIdx
@@ -66,8 +72,56 @@ checkCPInfo_ (Constant_InterfaceMethodref cIdx ntIdx) = do
       Left $
         ClassFormatError $
           printf "Unexpected interface method name and type: %s:%s" name
-checkCPInfo_ (Constant_NameAndType nt) = undefined
-checkCPInfo_ (Constant_MethodHandle kind idx) = undefined
+-- Already checked by Fieldref or Methodref
+checkCPInfo_ (Constant_NameAndType _) = return ()
+checkCPInfo_ (Constant_MethodHandle h) = do
+  cp <- asks envPool
+  let major = cpMajorVersion cp
+  let ConstMethodHandle rkind ridx = h
+  case rkind of
+    x
+      | x == REF_getField
+          || x == REF_getStatic
+          || x == REF_putField
+          || x == REF_putStatic ->
+          lift $ cpCheckTag JVM_Constant_Fieldref cp ridx
+    x
+      | x == REF_invokeVirtual
+          || x == REF_newInvokeSpecial ->
+          lift $ cpCheckTag JVM_Constant_Methodref cp ridx
+    x
+      | x == REF_invokeStatic
+          || x == REF_invokeSpecial ->
+          if major < java_8_version
+            then lift $ cpCheckTag JVM_Constant_Methodref cp ridx
+            else
+              lift $
+                cpCheckTag JVM_Constant_Methodref cp ridx
+                  <> cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
+    REF_invokeInterface -> lift $ cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
+    _ -> lift $ cfErr $ printf "Unknown reference kind: %s." (show rkind)
+
+  case rkind of
+    x
+      | x == REF_invokeVirtual
+          || x == REF_invokeStatic
+          || x == REF_invokeSpecial
+          || x == REF_invokeInterface -> do
+          tag <- lift $ cpTag cp ridx
+          ConstantUtf8 name <- case tag of
+            JVM_Constant_Methodref -> checkConstantMethodref_name ridx
+            _ -> checkConstantInterfaceMethodref_name ridx
+          when (name == T.pack "<init>" || name == T.pack "<clinit>") $
+            lift $
+              cfErr $
+                printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
+    REF_newInvokeSpecial -> do
+      ConstantUtf8 name <- checkConstantMethodref_name ridx
+      when (name /= T.pack "<init>") $
+        lift $
+          cfErr $
+            printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
+    _ -> return ()
 checkCPInfo_ (Constant_MethodType idx) = undefined
 checkCPInfo_ (Constant_Dynamic attrIdx idx) = undefined
 checkCPInfo_ (Constant_InvokeDynamic attrIdx idx) = undefined
@@ -109,8 +163,10 @@ checkConstantInvalid idx = do
   cp <- asks envPool
   lift $ cpCheckTag JVM_Constant_Invalid cp idx
 
-checkConstantUtf8 :: U2 -> CPReader ()
-checkConstantUtf8 = undefined
+checkConstantUtf8 :: U2 -> CPReader ConstantUtf8
+checkConstantUtf8 idx = do
+  cp <- asks envPool
+  lift $ cpUtf8 cp idx
 
 checkConstantInteger :: U2 -> CPReader ()
 checkConstantInteger = undefined
@@ -133,14 +189,32 @@ checkConstantString = undefined
 checkConstantFieldref :: U2 -> CPReader ()
 checkConstantFieldref = undefined -- no need
 
-checkConstantMethodref :: U2 -> CPReader ()
-checkConstantMethodref = undefined
+checkConstantMethodref :: U2 -> CPReader ConstMethodref
+checkConstantMethodref idx = do
+  cp <- asks envPool
+  lift $ cpMethodref cp idx
 
-checkConstantInterfaceMethodref :: U2 -> CPReader ()
-checkConstantInterfaceMethodref = undefined
+checkConstantMethodref_name :: U2 -> CPReader ConstantUtf8
+checkConstantMethodref_name idx = do
+  ConstMethodref _ nt <- checkConstantMethodref idx
+  ConstNameAndType n _ <- checkConstantNameAndType nt
+  checkConstantUtf8 n
+
+checkConstantInterfaceMethodref :: U2 -> CPReader ConstInterfaceMethodref
+checkConstantInterfaceMethodref idx = do
+  cp <- asks envPool
+  lift $ cpInterfaceMethodref cp idx
+
+checkConstantInterfaceMethodref_name :: U2 -> CPReader ConstantUtf8
+checkConstantInterfaceMethodref_name idx = do
+  ConstInterfaceMethodref _ nt <- checkConstantInterfaceMethodref idx
+  ConstNameAndType n _ <- checkConstantNameAndType nt
+  checkConstantUtf8 n
 
 checkConstantNameAndType :: U2 -> CPReader ConstNameAndType
-checkConstantNameAndType = undefined
+checkConstantNameAndType idx = do
+  cp <- asks envPool
+  lift $ cpNameAndType cp idx
 
 checkConstantMethodHandle :: U2 -> CPReader ()
 checkConstantMethodHandle = undefined
