@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# HLINT ignore "Use camelCase" #-}
@@ -6,6 +7,7 @@
 module ClassFile where
 
 import Control.Monad (when)
+import Data.Dynamic (Dynamic, fromDynamic, toDyn)
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
 import Data.Typeable (Typeable)
@@ -29,18 +31,6 @@ type AttrIndex = U2
 
 type CPIndex = U2
 
-data ConstNameAndType
-  = ConstNameAndType
-      CPIndex -- name_index
-      CPIndex -- descriptor_index
-  deriving (Show)
-
-data ConstMethodHandle = ConstMethodHandle
-  { _reference_kind :: ReferenceKind,
-    _reference_index :: CPIndex
-  }
-  deriving (Show)
-
 data CPInfo
   = Constant_Invalid
   | Constant_Utf8 ConstUtf8
@@ -62,32 +52,76 @@ data CPInfo
   | Constant_Package ConstPackage
   deriving (Typeable, Show)
 
+newtype ConstUtf8 = ConstUtf8 T.Text deriving (Show)
+
+newtype ConstInteger = ConstInteger Int32 deriving (Typeable, Show)
+
+newtype ConstFloat = ConstFloat Float deriving (Typeable, Show)
+
+newtype ConstLong = ConstLong Int64 deriving (Typeable, Show)
+
+newtype ConstDouble = ConstDouble Double deriving (Typeable, Show)
+
+newtype ConstClass = ConstClass CPIndex deriving (Typeable, Show)
+
+newtype ConstString = ConstString CPIndex deriving (Typeable, Show)
+
+data ConstFieldref
+  = ConstFieldref
+      CPIndex -- class_index
+      CPIndex -- name_and_type_index
+  deriving (Typeable, Show)
+
+data ConstMethodref
+  = ConstMethodref
+      CPIndex -- class_index
+      CPIndex -- name_and_type_index
+  deriving (Typeable, Show)
+
+data ConstInterfaceMethodref
+  = ConstInterfaceMethodref
+      CPIndex -- class_index
+      CPIndex -- name_and_type_index
+  deriving (Typeable, Show)
+
+data ConstNameAndType
+  = ConstNameAndType
+      CPIndex -- name_index
+      CPIndex -- descriptor_index
+  deriving (Typeable, Show)
+
+data ConstMethodHandle = ConstMethodHandle
+  { _reference_kind :: ReferenceKind,
+    _reference_index :: CPIndex
+  }
+  deriving (Typeable, Show)
+
 newtype ConstMethodType
   = ConstMethodType
       CPIndex -- descriptor_index
-  deriving (Show)
+  deriving (Typeable, Show)
 
 data ConstDynamic
   = ConstDynamic
       AttrIndex -- bootstrap_method_attr_index
       CPIndex -- name_and_type_index
-  deriving (Show)
+  deriving (Typeable, Show)
 
 data ConstInvokeDynamic
   = ConstInvokeDynamic
       AttrIndex -- bootstrap_method_attr_index
       CPIndex -- name_and_type_index
-  deriving (Show)
+  deriving (Typeable, Show)
 
 newtype ConstModule
   = ConstModule
       CPIndex -- name_index
-  deriving (Show)
+  deriving (Typeable, Show)
 
 newtype ConstPackage
   = ConstPackage
       CPIndex -- name_index
-  deriving (Show)
+  deriving (Typeable, Show)
 
 data CPTag
   = JVM_Constant_Invalid
@@ -109,38 +143,6 @@ data CPTag
   | JVM_Constant_Module
   | JVM_Constant_Package
   deriving (Show, Eq)
-
-newtype ConstUtf8 = ConstUtf8 T.Text deriving (Show)
-
-newtype ConstInteger = ConstInteger Int32 deriving (Show)
-
-newtype ConstFloat = ConstFloat Float deriving (Show)
-
-newtype ConstLong = ConstLong Int64 deriving (Show)
-
-newtype ConstDouble = ConstDouble Double deriving (Show)
-
-newtype ConstClass = ConstClass CPIndex deriving (Show)
-
-newtype ConstString = ConstString CPIndex deriving (Show)
-
-data ConstFieldref
-  = ConstFieldref
-      CPIndex -- class_index
-      CPIndex -- name_and_type_index
-  deriving (Show)
-
-data ConstMethodref
-  = ConstMethodref
-      CPIndex -- class_index
-      CPIndex -- name_and_type_index
-  deriving (Show)
-
-data ConstInterfaceMethodref
-  = ConstInterfaceMethodref
-      CPIndex -- class_index
-      CPIndex -- name_and_type_index
-  deriving (Show)
 
 data ReferenceKind
   = REF_none -- 0
@@ -438,13 +440,25 @@ class ConstantPool cp where
   cpCheckTag :: CPTag -> cp -> U2 -> MyErr ()
   cpElement :: cp -> U2 -> MyErr CPInfo
   cpTag :: cp -> U2 -> MyErr CPTag
-  cpClass :: cp -> U2 -> MyErr ConstClass
-  cpString :: cp -> U2 -> MyErr ConstString
-  cpUtf8 :: cp -> U2 -> MyErr ConstUtf8
-  cpNameAndType :: cp -> U2 -> MyErr ConstNameAndType
-  cpMethodHandler :: cp -> U2 -> MyErr ConstMethodHandle
-  cpMethodref :: cp -> U2 -> MyErr ConstMethodref
-  cpInterfaceMethodref :: cp -> U2 -> MyErr ConstInterfaceMethodref
+
+  cpConstInvalid :: cp -> U2 -> MyErr ()
+  cpConstUtf8 :: cp -> U2 -> MyErr ConstUtf8
+  cpConstInteger :: cp -> U2 -> MyErr ConstInteger
+  cpConstFloat :: cp -> U2 -> MyErr ConstFloat
+  cpConstLong :: cp -> U2 -> MyErr ConstLong
+  cpConstDouble :: cp -> U2 -> MyErr ConstDouble
+  cpConstClass :: cp -> U2 -> MyErr ConstClass
+  cpConstString :: cp -> U2 -> MyErr ConstString
+  cpConstFieldref :: cp -> U2 -> MyErr ConstFieldref
+  cpConstMethodref :: cp -> U2 -> MyErr ConstMethodref
+  cpConstInterfaceMethodref :: cp -> U2 -> MyErr ConstInterfaceMethodref
+  cpConstNameAndType :: cp -> U2 -> MyErr ConstNameAndType
+  cpConstMethodHandle :: cp -> U2 -> MyErr ConstMethodHandle
+  cpConstMethodType :: cp -> U2 -> MyErr ConstMethodType
+  cpConstDynamic :: cp -> U2 -> MyErr ConstDynamic
+  cpConstInvokeDynamic :: cp -> U2 -> MyErr ConstInvokeDynamic
+  cpConstModule :: cp -> U2 -> MyErr ConstModule
+  cpConstPackage :: cp -> U2 -> MyErr ConstPackage
 
 instance ConstantPool ConstantPoolInfo where
   cpCheckIndex :: ConstantPoolInfo -> U2 -> MyErr ()
@@ -466,50 +480,67 @@ instance ConstantPool ConstantPoolInfo where
       Left $
         ClassFormatError $
           printf "Expected: %s, Actual: %s" (show tag) (show atag)
+  cpConstInvalid = cpType JVM_Constant_Invalid
+  cpConstUtf8 = cpType JVM_Constant_Utf8
+  cpConstInteger = cpType JVM_Constant_Integer
+  cpConstFloat = cpType JVM_Constant_Float
+  cpConstLong = cpType JVM_Constant_Long
+  cpConstDouble = cpType JVM_Constant_Double
+  cpConstClass = cpType JVM_Constant_Class
+  cpConstString = cpType JVM_Constant_String
+  cpConstFieldref = cpType JVM_Constant_Fieldref
+  cpConstMethodref = cpType JVM_Constant_Methodref
+  cpConstInterfaceMethodref = cpType JVM_Constant_InterfaceMethodref
+  cpConstNameAndType = cpType JVM_Constant_NameAndType
+  cpConstMethodHandle = cpType JVM_Constant_MethodHandle
+  cpConstMethodType = cpType JVM_Constant_MethodType
+  cpConstDynamic = cpType JVM_Constant_Dynamic
+  cpConstInvokeDynamic = cpType JVM_Constant_InvokeDynamic
+  cpConstModule = cpType JVM_Constant_Module
+  cpConstPackage = cpType JVM_Constant_Package
 
-  cpClass cp n = do
-    info <- cpElement cp n
-    case info of
-      Constant_Class x -> Right x
-      _ -> unmatchedErr "Constant_Class" info n
-  cpString cp n = do
-    info <- cpElement cp n
-    case info of
-      Constant_String x -> Right x
-      _ -> unmatchedErr "Constant_String" info n
-  cpUtf8 cp n = do
-    info <- cpElement cp n
-    case info of
-      Constant_Utf8 x -> Right x
-      _ -> unmatchedErr "Constant_Utf8" info n
-  cpNameAndType cp n = do
-    info <- cpElement cp n
-    case info of
-      Constant_NameAndType x -> Right x
-      _ -> unmatchedErr "Constant_NameAndType" info n
-  cpMethodHandler cp n = do
-    info <- cpElement cp n
-    case info of
-      Constant_MethodHandle x -> Right x
-      _ -> unmatchedErr "Constant_MethodHandle" info n
-  cpMethodref cp n = do
-    info <- cpElement cp n
-    case info of
-      Constant_Methodref x -> Right x
-      _ -> unmatchedErr "Constant_Methodref" info n
-  cpInterfaceMethodref cp n = do
-    info <- cpElement cp n
-    case info of
-      Constant_InterfaceMethodref x -> Right x
-      _ -> unmatchedErr "Constant_InterfaceMethodref" info n
+data Hello = Hello | Hi | Hii Int
 
-unmatchedErr :: String -> CPInfo -> U2 -> MyErr a
-unmatchedErr expected actual idx =
+jjj :: CPTag -> ConstantPoolInfo -> U2 -> MyErr Hello
+jjj = cpType
+
+cpType :: (Typeable a) => CPTag -> ConstantPoolInfo -> U2 -> MyErr a
+cpType tag cp idx = do
+  dyn <- cpDynamic cp idx
+  case fromDynamic dyn of
+    Nothing -> unmatchedErr tag dyn idx
+    Just x -> return x
+
+cpDynamic :: ConstantPoolInfo -> U2 -> MyErr Dynamic
+cpDynamic cp idx = do
+  info <- cpElement cp idx
+  case info of
+    Constant_Invalid -> Right $ toDyn ()
+    Constant_Utf8 x -> Right $ toDyn x
+    Constant_Integer x -> Right $ toDyn x
+    Constant_Float x -> Right $ toDyn x
+    Constant_Long x -> Right $ toDyn x
+    Constant_Double x -> Right $ toDyn x
+    Constant_Class x -> Right $ toDyn x
+    Constant_String x -> Right $ toDyn x
+    Constant_Fieldref x -> Right $ toDyn x
+    Constant_Methodref x -> Right $ toDyn x
+    Constant_InterfaceMethodref x -> Right $ toDyn x
+    Constant_NameAndType x -> Right $ toDyn x
+    Constant_MethodHandle x -> Right $ toDyn x
+    Constant_MethodType x -> Right $ toDyn x
+    Constant_Dynamic x -> Right $ toDyn x
+    Constant_InvokeDynamic x -> Right $ toDyn x
+    Constant_Module x -> Right $ toDyn x
+    Constant_Package x -> Right $ toDyn x
+
+unmatchedErr :: CPTag -> Dynamic -> U2 -> MyErr a
+unmatchedErr tag actual idx =
   Left $
     PE $
       PoolUnmatchedType $
         printf
           "Expected: %s, Actual: %s, Index: %d"
-          expected
+          (show tag)
           (show actual)
           idx

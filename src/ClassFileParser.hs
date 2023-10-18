@@ -207,18 +207,18 @@ checkConstantInvalid idx = do
 checkConstantUtf8 :: U2 -> CPReader ConstUtf8
 checkConstantUtf8 idx = do
   cp <- asks envPool
-  lift $ cpUtf8 cp idx
+  lift $ cpConstUtf8 cp idx
 
 checkConstantClass :: U2 -> CPReader ConstUtf8
 checkConstantClass idx = do
   cp <- asks envPool
-  ConstClass nidx <- lift $ cpClass cp idx
+  ConstClass nidx <- lift $ cpConstClass cp idx
   utf8Checker verifyLegalClassName nidx
 
 checkConstantMethodref :: U2 -> CPReader ConstMethodref
 checkConstantMethodref idx = do
   cp <- asks envPool
-  lift $ cpMethodref cp idx
+  lift $ cpConstMethodref cp idx
 
 checkConstantMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantMethodref_name idx = do
@@ -229,7 +229,7 @@ checkConstantMethodref_name idx = do
 checkConstantInterfaceMethodref :: U2 -> CPReader ConstInterfaceMethodref
 checkConstantInterfaceMethodref idx = do
   cp <- asks envPool
-  lift $ cpInterfaceMethodref cp idx
+  lift $ cpConstInterfaceMethodref cp idx
 
 checkConstantInterfaceMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantInterfaceMethodref_name idx = do
@@ -240,7 +240,7 @@ checkConstantInterfaceMethodref_name idx = do
 checkConstantNameAndType :: U2 -> CPReader ConstNameAndType
 checkConstantNameAndType idx = do
   cp <- asks envPool
-  r@(ConstNameAndType nIdx dIdx) <- lift $ cpNameAndType cp idx
+  r@(ConstNameAndType nIdx dIdx) <- lift $ cpConstNameAndType cp idx
   _ <- checkConstantUtf8 nIdx
   _ <- checkConstantUtf8 dIdx
   return r
@@ -248,7 +248,7 @@ checkConstantNameAndType idx = do
 utf8Checker :: (Text -> MyErr Text) -> U2 -> CPReader ConstUtf8
 utf8Checker checker idx = do
   cp <- asks envPool
-  r@(ConstUtf8 name) <- lift $ cpUtf8 cp idx
+  r@(ConstUtf8 name) <- lift $ cpConstUtf8 cp idx
   _ <- lift $ checker name
   return r
 

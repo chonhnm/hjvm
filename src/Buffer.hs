@@ -656,7 +656,7 @@ parseAttributeInfo = do
   cp <- asks constantPool
   attrNameIdx <- lift getWord16be
   len <- lift getWord32be
-  let maybeAttrTag = cpUtf8 cp attrNameIdx
+  let maybeAttrTag = cpConstUtf8 cp attrNameIdx
   case maybeAttrTag of
     Left err -> error $ show err
     Right (ConstUtf8 attrTag) -> do
