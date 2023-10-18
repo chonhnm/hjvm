@@ -10,6 +10,7 @@ import Control.Monad.Trans.Reader
   )
 import Data.Dynamic
 import Util (MyErr, classFormatErr)
+import ClassFile
 
 
 parseReader :: IO ()
@@ -71,3 +72,20 @@ hlist4 = fromDyn (head hlist)  $ classFormatErr  $ show $ dynTypeRep (head hlist
 
 hlist5 :: MyErr String
 hlist5 = hlist4
+
+data CPInfo2 a = CPInfo2 CPTag a deriving Functor
+
+lll ::[CPInfo2 Dynamic]
+lll = [CPInfo2 JVM_Constant_Class $ toDyn "dfd"]
+
+l2 :: CPInfo2 String
+l2 = CPInfo2 JVM_Constant_Invalid ""
+
+l3 :: CPInfo2 Integer
+l3 = CPInfo2 JVM_Constant_Class 1233
+
+
+lii = [toDyn <$> l2, toDyn <$> l3]
+
+tags :: CPInfo2 a -> CPTag
+tags (CPInfo2 tag _ )= tag  
