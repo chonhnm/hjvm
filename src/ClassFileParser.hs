@@ -58,8 +58,12 @@ checkCPInfo_ (Constant_Long _) = do
 checkCPInfo_ (Constant_Double _) = do
   idx <- asks envCurPoolIdx
   checkConstantInvalid (idx + 1)
-checkCPInfo_ (Constant_Class idx) = void $ checkConstantClass idx
-checkCPInfo_ (Constant_String idx) = void $ checkConstantUtf8 idx
+checkCPInfo_ (Constant_Class _) = do
+  idx <- asks envCurPoolIdx
+  void $ checkConstantClass idx
+checkCPInfo_ (Constant_String cs) = do
+  let ConstString idx = cs
+  void $ checkConstantUtf8 idx
 checkCPInfo_ (Constant_Fieldref fr) = do
   let ConstFieldref cIdx ntIdx = fr
   _ <- checkConstantClass cIdx
@@ -70,8 +74,8 @@ checkCPInfo_ (Constant_Methodref mr) = do
   let ConstMethodref cIdx ntIdx = mr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  ConstantUtf8 name <- checkMethodName nIdx
-  ConstantUtf8 desc <- checkMethodDesc desIdx
+  ConstUtf8 name <- checkMethodName nIdx
+  ConstUtf8 desc <- checkMethodDesc desIdx
   when (T.head name == jvm_signature_special)
     $ when
       (name /= T.pack "<init>" || T.last desc /= jvm_signature_void)
@@ -83,7 +87,7 @@ checkCPInfo_ (Constant_InterfaceMethodref imr) = do
   let ConstInterfaceMethodref cIdx ntIdx = imr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  ConstantUtf8 name <- checkMethodName nIdx
+  ConstUtf8 name <- checkMethodName nIdx
   _ <- checkMethodDesc desIdx
   when (T.head name == jvm_signature_special) $
     lift $
@@ -117,7 +121,7 @@ checkCPInfo_ (Constant_MethodHandle h) = do
                 cpCheckTag JVM_Constant_Methodref cp ridx
                   <> cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
     REF_invokeInterface -> lift $ cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
-    _ -> lift $ cfErr $ printf "Unknown reference kind: %s." (show rkind)
+    _ -> lift $ classFormatErr $ printf "Unknown reference kind: %s." (show rkind)
 
   case rkind of
     x
@@ -126,18 +130,18 @@ checkCPInfo_ (Constant_MethodHandle h) = do
           || x == REF_invokeSpecial
           || x == REF_invokeInterface -> do
           tag <- lift $ cpTag cp ridx
-          ConstantUtf8 name <- case tag of
+          ConstUtf8 name <- case tag of
             JVM_Constant_Methodref -> checkConstantMethodref_name ridx
             _ -> checkConstantInterfaceMethodref_name ridx
           when (name == T.pack "<init>" || name == T.pack "<clinit>") $
             lift $
-              cfErr $
+              classFormatErr $
                 printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
     REF_newInvokeSpecial -> do
-      ConstantUtf8 name <- checkConstantMethodref_name ridx
+      ConstUtf8 name <- checkConstantMethodref_name ridx
       when (name /= T.pack "<init>") $
         lift $
-          cfErr $
+          classFormatErr $
             printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
     _ -> return ()
 checkCPInfo_ (Constant_MethodType idx) = void $ checkMethodDesc idx
@@ -157,9 +161,6 @@ checkCPInfo_ (Constant_Package idx) = do
   void $ checkPackageName idx
 checkCPInfo_ Constant_Invalid = return ()
 
-cfErr :: String -> Either AppErr b
-cfErr str = Left $ ClassFormatError str
-
 checkConstantPoolInfo :: ClassFile -> MyErr ()
 checkConstantPoolInfo cf =
   do
@@ -168,10 +169,10 @@ checkConstantPoolInfo cf =
     let infos = cpInfos cp
     let cnt = cpCount cp
     when (length tags /= fromIntegral cnt || length tags /= length infos) $
-      cfErr "Unexpected fatal error."
-    when (cnt <= 0) $ cfErr "Constant pool count shoud greater than zero."
+      classFormatErr "Unexpected fatal error."
+    when (cnt <= 0) $ classFormatErr "Constant pool count shoud greater than zero."
     when (head tags /= JVM_Constant_Invalid) $
-      cfErr "Constant pool entry at zero is not invalid."
+      classFormatErr "Constant pool entry at zero is not invalid."
     runReaderT (doCheckCPInfo infos) (Env cf cp 0)
 
 doCheckCPInfo :: [CPInfo] -> CPReader ()
@@ -187,7 +188,7 @@ checkIsModule = do
   cf <- asks envClassFile
   let flags = accessFlags cf
   let isModule = is_module flags
-  unless isModule $ lift $ cfErr "Class File is not module, but contains a constant module info."
+  unless isModule $ lift $ classFormatErr "Class File is not module, but contains a constant module info."
 
 checkBootstrapAttrIdx :: U2 -> CPReader ()
 checkBootstrapAttrIdx idx = do
@@ -195,7 +196,7 @@ checkBootstrapAttrIdx idx = do
   let cnt = fromIntegral . length $ getBootstapMethods cf
   when (idx < 0 || idx >= cnt) $
     lift $
-      cfErr $
+      classFormatErr $
         printf "Bootstrap attr count: %d, attr index: %d." cnt idx
 
 checkConstantInvalid :: U2 -> CPReader ()
@@ -203,20 +204,23 @@ checkConstantInvalid idx = do
   cp <- asks envPool
   lift $ cpCheckTag JVM_Constant_Invalid cp idx
 
-checkConstantUtf8 :: U2 -> CPReader ConstantUtf8
+checkConstantUtf8 :: U2 -> CPReader ConstUtf8
 checkConstantUtf8 idx = do
   cp <- asks envPool
   lift $ cpUtf8 cp idx
 
-checkConstantClass :: U2 -> CPReader ConstantUtf8
-checkConstantClass = utf8Checker verifyLegalClassName
+checkConstantClass :: U2 -> CPReader ConstUtf8
+checkConstantClass idx = do
+  cp <- asks envPool
+  ConstClass nidx <- lift $ cpClass cp idx
+  utf8Checker verifyLegalClassName nidx
 
 checkConstantMethodref :: U2 -> CPReader ConstMethodref
 checkConstantMethodref idx = do
   cp <- asks envPool
   lift $ cpMethodref cp idx
 
-checkConstantMethodref_name :: U2 -> CPReader ConstantUtf8
+checkConstantMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantMethodref_name idx = do
   ConstMethodref _ nt <- checkConstantMethodref idx
   ConstNameAndType n _ <- checkConstantNameAndType nt
@@ -227,7 +231,7 @@ checkConstantInterfaceMethodref idx = do
   cp <- asks envPool
   lift $ cpInterfaceMethodref cp idx
 
-checkConstantInterfaceMethodref_name :: U2 -> CPReader ConstantUtf8
+checkConstantInterfaceMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantInterfaceMethodref_name idx = do
   ConstInterfaceMethodref _ nt <- checkConstantInterfaceMethodref idx
   ConstNameAndType n _ <- checkConstantNameAndType nt
@@ -241,29 +245,29 @@ checkConstantNameAndType idx = do
   _ <- checkConstantUtf8 dIdx
   return r
 
-utf8Checker :: (Text -> MyErr Text) -> U2 -> CPReader ConstantUtf8
+utf8Checker :: (Text -> MyErr Text) -> U2 -> CPReader ConstUtf8
 utf8Checker checker idx = do
   cp <- asks envPool
-  r@(ConstantUtf8 name) <- lift $ cpUtf8 cp idx
+  r@(ConstUtf8 name) <- lift $ cpUtf8 cp idx
   _ <- lift $ checker name
   return r
 
-checkFieldDesc :: U2 -> CPReader ConstantUtf8
+checkFieldDesc :: U2 -> CPReader ConstUtf8
 checkFieldDesc = utf8Checker runParseFieldDescriptor
 
-checkMethodDesc :: U2 -> CPReader ConstantUtf8
+checkMethodDesc :: U2 -> CPReader ConstUtf8
 checkMethodDesc = utf8Checker runParseMethodDescriptor
 
-checkFieldName :: U2 -> CPReader ConstantUtf8
+checkFieldName :: U2 -> CPReader ConstUtf8
 checkFieldName = utf8Checker verifyLegalFieldName
 
-checkMethodName :: U2 -> CPReader ConstantUtf8
+checkMethodName :: U2 -> CPReader ConstUtf8
 checkMethodName = utf8Checker verifyLegalMethodName
 
-checkModuleName :: U2 -> CPReader ConstantUtf8
+checkModuleName :: U2 -> CPReader ConstUtf8
 checkModuleName = utf8Checker verifyLegalModuleName
 
-checkPackageName :: U2 -> CPReader ConstantUtf8
+checkPackageName :: U2 -> CPReader ConstUtf8
 checkPackageName = utf8Checker verifyLegalClassName
 
 data LegalTag = LegalClass | LegalField | LegalMethod deriving (Eq)
@@ -276,25 +280,25 @@ showErrMsg err =
 verifyLegalModuleName :: Text -> MyErr Text
 verifyLegalModuleName name =
   case runP parseModuleName () "modulename" name of
-    Left err -> cfErr $ showErrMsg err
+    Left err -> classFormatErr $ showErrMsg err
     Right _ -> return name
 
 verifyLegalClassName :: Text -> MyErr Text
 verifyLegalClassName name
   | T.head name == jvm_signature_array = runParseFieldDescriptor name
   | verifyUnqualifiedName LegalClass name = return name
-  | otherwise = cfErr $ printf "Illegal class name \"%s\"." name
+  | otherwise = classFormatErr $ printf "Illegal class name \"%s\"." name
 
 verifyLegalFieldName :: Text -> MyErr Text
 verifyLegalFieldName name
   | verifyUnqualifiedName LegalField name = return name
-  | otherwise = cfErr $ printf "Illegal field name \"%s\"." name
+  | otherwise = classFormatErr $ printf "Illegal field name \"%s\"." name
 
 verifyLegalMethodName :: Text -> MyErr Text
 verifyLegalMethodName name
   | name == T.pack "<init>" || name == T.pack "<clinit>" = return name
   | verifyUnqualifiedName LegalMethod name = return name
-  | otherwise = cfErr $ printf "Illegal method name \"%s\"." name
+  | otherwise = classFormatErr $ printf "Illegal method name \"%s\"." name
 
 verifyUnqualifiedName :: LegalTag -> Text -> Bool
 verifyUnqualifiedName _ name | T.null name = False
@@ -328,13 +332,13 @@ data FieldType = BaseType | ObjectType | ArrayType | VoidType
 runParseFieldDescriptor :: Text -> MyErr Text
 runParseFieldDescriptor name =
   case runP verifyFieldDescriptor () "fielddesc" name of
-    Left err -> cfErr $ show err
+    Left err -> classFormatErr $ show err
     Right _ -> return name
 
 runParseMethodDescriptor :: Text -> MyErr Text
 runParseMethodDescriptor name =
   case runP verifyMethodDescriptor () "methoddesc" name of
-    Left err -> cfErr $ show err
+    Left err -> classFormatErr $ show err
     Right _ -> return name
 
 verifyMethodDescriptor :: TextParser ()

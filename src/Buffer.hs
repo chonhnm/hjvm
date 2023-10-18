@@ -4,6 +4,7 @@ module Buffer where
 
 import ClassFile
 import ClassFileChecker (checkAttrLength)
+import ClassFileParser (checkConstantPoolInfo)
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local, withReaderT)
@@ -21,7 +22,7 @@ import Util
 parseMagic :: Get U4
 parseMagic = do
   w <- getWord32be
-  if w /= 0xcafebabe
+  if w /= java_classfile_magic
     then fail $ "magic code check failed: 0x" ++ showHex (toInteger w) ""
     else return w
 
@@ -91,25 +92,25 @@ parseConstantUtf8 :: Get CPInfo
 parseConstantUtf8 = do
   len <- getWord16be
   str <- getByteString $ fromIntegral len
-  return $ Constant_Utf8 . ConstantUtf8 $ decodeUtf8Jvm str
+  return $ Constant_Utf8 . ConstUtf8 $ decodeUtf8Jvm str
 
 parseConstantInteger :: Get CPInfo
-parseConstantInteger = Constant_Integer . ConstantInteger <$> getInt32be
+parseConstantInteger = Constant_Integer . ConstInteger <$> getInt32be
 
 parseConstantFloat :: Get CPInfo
-parseConstantFloat = Constant_Float . ConstantFloat <$> getFloatbe
+parseConstantFloat = Constant_Float . ConstFloat <$> getFloatbe
 
 parseConstantLong :: Get CPInfo
-parseConstantLong = Constant_Long . ConstantLong <$> getInt64be
+parseConstantLong = Constant_Long . ConstLong <$> getInt64be
 
 parseConstantDouble :: Get CPInfo
-parseConstantDouble = Constant_Double . ConstantDouble <$> getDoublebe
+parseConstantDouble = Constant_Double . ConstDouble <$> getDoublebe
 
 parseConstantClass :: Get CPInfo
-parseConstantClass = Constant_Class <$> getWord16be
+parseConstantClass = Constant_Class . ConstClass <$> getWord16be
 
 parseConstantString :: Get CPInfo
-parseConstantString = Constant_Class <$> getWord16be
+parseConstantString = Constant_String . ConstString <$> getWord16be
 
 parseConstantFieldref :: Get CPInfo
 parseConstantFieldref = do
@@ -656,7 +657,7 @@ parseAttributeInfo = do
   let maybeAttrTag = cpUtf8 cp attrNameIdx
   case maybeAttrTag of
     Left err -> error $ show err
-    Right (ConstantUtf8 attrTag) -> do
+    Right (ConstUtf8 attrTag) -> do
       let str = T.unpack attrTag
       attr <- case str of
         "ConstantValue" -> parseConstantValue
@@ -748,15 +749,17 @@ runParseClassFile file = do
   input <- BL.readFile file
   let cf = loadClassFile input
   case cf of
-    Left err -> print $ err ++ ".."
+    Left err -> do
+      print $ show err
     Right _ -> print "classfile: ok!"
 
-type Err = String
-
-loadClassFile :: ByteString -> Either Err ClassFile
-loadClassFile file =
+loadClassFile :: ByteString -> MyErr ClassFile
+loadClassFile file = do
   let cf = runGet (runReaderT parseClassFile emptyClassFile) file
-      err = checkAttrLength cf
-   in case err of
-        Nothing -> Right cf
-        Just str -> Left str
+  classFormatCheck cf
+  return cf
+
+classFormatCheck :: ClassFile -> MyErr ()
+classFormatCheck cf = do
+  checkAttrLength cf
+  checkConstantPoolInfo cf

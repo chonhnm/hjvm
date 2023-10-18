@@ -9,7 +9,6 @@ import Control.Monad (when)
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
 import Data.Typeable (Typeable)
-import Numeric (showHex)
 import Text.Printf (printf)
 import Util
 
@@ -44,13 +43,13 @@ data ConstMethodHandle = ConstMethodHandle
 
 data CPInfo
   = Constant_Invalid
-  | Constant_Utf8 ConstantUtf8
-  | Constant_Integer ConstantInteger
-  | Constant_Float ConstantFloat
-  | Constant_Long ConstantLong
-  | Constant_Double ConstantDouble
-  | Constant_Class {_name_index :: CPIndex}
-  | Constant_String {_string_index :: CPIndex}
+  | Constant_Utf8 ConstUtf8
+  | Constant_Integer ConstInteger
+  | Constant_Float ConstFloat
+  | Constant_Long ConstLong
+  | Constant_Double ConstDouble
+  | Constant_Class ConstClass
+  | Constant_String ConstString
   | Constant_Fieldref ConstFieldref
   | Constant_Methodref ConstMethodref
   | Constant_InterfaceMethodref ConstInterfaceMethodref
@@ -84,15 +83,19 @@ data CPTag
   | JVM_Constant_Package
   deriving (Show, Eq)
 
-newtype ConstantUtf8 = ConstantUtf8 T.Text deriving (Show)
+newtype ConstUtf8 = ConstUtf8 T.Text deriving (Show)
 
-newtype ConstantInteger = ConstantInteger Int32 deriving (Show)
+newtype ConstInteger = ConstInteger Int32 deriving (Show)
 
-newtype ConstantFloat = ConstantFloat Float deriving (Show)
+newtype ConstFloat = ConstFloat Float deriving (Show)
 
-newtype ConstantLong = ConstantLong Int64 deriving (Show)
+newtype ConstLong = ConstLong Int64 deriving (Show)
 
-newtype ConstantDouble = ConstantDouble Double deriving (Show)
+newtype ConstDouble = ConstDouble Double deriving (Show)
+
+newtype ConstClass = ConstClass CPIndex deriving (Show)
+
+newtype ConstString = ConstString CPIndex deriving (Show)
 
 data ConstFieldref
   = ConstFieldref
@@ -408,7 +411,9 @@ class ConstantPool cp where
   cpCheckTag :: CPTag -> cp -> U2 -> MyErr ()
   cpElement :: cp -> U2 -> MyErr CPInfo
   cpTag :: cp -> U2 -> MyErr CPTag
-  cpUtf8 :: cp -> U2 -> MyErr ConstantUtf8
+  cpClass :: cp -> U2 -> MyErr ConstClass
+  cpString :: cp -> U2 -> MyErr ConstString
+  cpUtf8 :: cp -> U2 -> MyErr ConstUtf8
   cpNameAndType :: cp -> U2 -> MyErr ConstNameAndType
   cpMethodHandler :: cp -> U2 -> MyErr ConstMethodHandle
   cpMethodref :: cp -> U2 -> MyErr ConstMethodref
@@ -434,37 +439,50 @@ instance ConstantPool ConstantPoolInfo where
       Left $
         ClassFormatError $
           printf "Expected: %s, Actual: %s" (show tag) (show atag)
-  cpUtf8 :: ConstantPoolInfo -> U2 -> MyErr ConstantUtf8
+
+  cpClass cp n = do
+    info <- cpElement cp n
+    case info of
+      Constant_Class x -> Right x
+      _ -> unmatchedErr "Constant_Class" info n
+  cpString cp n = do
+    info <- cpElement cp n
+    case info of
+      Constant_String x -> Right x
+      _ -> unmatchedErr "Constant_String" info n
   cpUtf8 cp n = do
     info <- cpElement cp n
     case info of
       Constant_Utf8 x -> Right x
-      _ -> unmatchedErr "Constant_Utf8" info
+      _ -> unmatchedErr "Constant_Utf8" info n
   cpNameAndType cp n = do
     info <- cpElement cp n
     case info of
       Constant_NameAndType x -> Right x
-      _ -> unmatchedErr "Constant_NameAndType" info
+      _ -> unmatchedErr "Constant_NameAndType" info n
   cpMethodHandler cp n = do
     info <- cpElement cp n
     case info of
       Constant_MethodHandle x -> Right x
-      _ -> unmatchedErr "Constant_MethodHandle" info
+      _ -> unmatchedErr "Constant_MethodHandle" info n
   cpMethodref cp n = do
     info <- cpElement cp n
     case info of
       Constant_Methodref x -> Right x
-      _ -> unmatchedErr "Constant_Methodref" info
+      _ -> unmatchedErr "Constant_Methodref" info n
   cpInterfaceMethodref cp n = do
     info <- cpElement cp n
     case info of
       Constant_InterfaceMethodref x -> Right x
-      _ -> unmatchedErr "Constant_InterfaceMethodref" info
+      _ -> unmatchedErr "Constant_InterfaceMethodref" info n
 
-unmatchedErr :: String -> CPInfo -> MyErr a
-unmatchedErr expected actual =
+unmatchedErr :: String -> CPInfo -> U2 -> MyErr a
+unmatchedErr expected actual idx =
   Left $
     PE $
       PoolUnmatchedType $
-        printf "Expected: %s, Actual: %s." expected $
-          show actual
+        printf
+          "Expected: %s, Actual: %s, Index: %d"
+          expected
+          (show actual)
+          idx

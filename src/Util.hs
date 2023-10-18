@@ -4,6 +4,7 @@ module Util
     AppErr (..),
     CheckedError (..),
     MyErr,
+    classFormatErr,
   )
 where
 
@@ -28,5 +29,7 @@ data CheckedError
   | NonExausted
   deriving (Show)
 
-
 type MyErr = Either AppErr
+
+classFormatErr :: String -> Either AppErr b
+classFormatErr str = Left $ ClassFormatError str

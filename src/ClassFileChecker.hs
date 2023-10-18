@@ -82,7 +82,7 @@ instance AttrInfoLenChecker AttributeInfo where
           then Nothing
           else Just $ printf "Expected: %d, Actual: %d." len al
 
-checkAttrLength :: ClassFile -> Maybe String
+checkAttrLength :: ClassFile -> MyErr ()
 checkAttrLength cf =
   let fxss = map fi_atrributes $ fields cf
       mxss = map mi_attributes $ methods cf
@@ -97,9 +97,9 @@ checkAttrLength cf =
             . map (\attr -> (checkLength attr, attr))
           $ concat fxss ++ concat mxss ++ xs
    in case err of
-        Nothing -> Nothing
-        Just (Just str, attr) -> Just (str ++ ";attr:" ++ show attr)
-        Just _ -> error $ "Unexpected: " ++ show err
+        Nothing -> return ()
+        Just (Just str, attr) -> classFormatErr (str ++ ";attr:" ++ show attr)
+        Just _ -> classFormatErr $ "Unexpected: " ++ show err
   where
     safeHead [] = Nothing
     safeHead (x : _) = Just x
