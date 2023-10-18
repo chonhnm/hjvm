@@ -144,19 +144,19 @@ checkCPInfo_ (Constant_MethodHandle h) = do
           classFormatErr $
             printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
     _ -> return ()
-checkCPInfo_ (Constant_MethodType idx) = void $ checkMethodDesc idx
-checkCPInfo_ (Constant_Dynamic attrIdx idx) = do
+checkCPInfo_ (Constant_MethodType (ConstMethodType idx)) = void $ checkMethodDesc idx
+checkCPInfo_ (Constant_Dynamic (ConstDynamic attrIdx idx)) = do
   checkBootstrapAttrIdx attrIdx
   ConstNameAndType _ dIdx <- checkConstantNameAndType idx
   void $ checkFieldDesc dIdx
-checkCPInfo_ (Constant_InvokeDynamic attrIdx idx) = do
+checkCPInfo_ (Constant_InvokeDynamic (ConstInvokeDynamic attrIdx idx)) = do
   checkBootstrapAttrIdx attrIdx
   ConstNameAndType _ dIdx <- checkConstantNameAndType idx
   void $ checkMethodDesc dIdx
-checkCPInfo_ (Constant_Module idx) = do
+checkCPInfo_ (Constant_Module (ConstModule idx)) = do
   checkIsModule
   void $ checkModuleName idx
-checkCPInfo_ (Constant_Package idx) = do
+checkCPInfo_ (Constant_Package (ConstPackage idx)) = do
   checkIsModule
   void $ checkPackageName idx
 checkCPInfo_ Constant_Invalid = return ()

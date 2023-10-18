@@ -55,12 +55,39 @@ data CPInfo
   | Constant_InterfaceMethodref ConstInterfaceMethodref
   | Constant_NameAndType ConstNameAndType
   | Constant_MethodHandle ConstMethodHandle
-  | Constant_MethodType {_descriptor_index :: CPIndex}
-  | Constant_Dynamic {_bootstrap_method_attr_index :: AttrIndex, _name_and_type_index :: CPIndex}
-  | Constant_InvokeDynamic {_bootstrap_method_attr_index :: AttrIndex, _name_and_type_index :: CPIndex}
-  | Constant_Module {_name_index :: CPIndex}
-  | Constant_Package {_name_index :: CPIndex}
+  | Constant_MethodType ConstMethodType
+  | Constant_Dynamic ConstDynamic
+  | Constant_InvokeDynamic ConstInvokeDynamic
+  | Constant_Module ConstModule
+  | Constant_Package ConstPackage
   deriving (Typeable, Show)
+
+newtype ConstMethodType
+  = ConstMethodType
+      CPIndex -- descriptor_index
+  deriving (Show)
+
+data ConstDynamic
+  = ConstDynamic
+      AttrIndex -- bootstrap_method_attr_index
+      CPIndex -- name_and_type_index
+  deriving (Show)
+
+data ConstInvokeDynamic
+  = ConstInvokeDynamic
+      AttrIndex -- bootstrap_method_attr_index
+      CPIndex -- name_and_type_index
+  deriving (Show)
+
+newtype ConstModule
+  = ConstModule
+      CPIndex -- name_index
+  deriving (Show)
+
+newtype ConstPackage
+  = ConstPackage
+      CPIndex -- name_index
+  deriving (Show)
 
 data CPTag
   = JVM_Constant_Invalid

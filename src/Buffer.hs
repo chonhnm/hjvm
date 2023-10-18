@@ -141,27 +141,29 @@ parseConstantMethodHandle = do
 parseConstantMethodType :: MajorVersionReader CPInfo
 parseConstantMethodType = do
   major <- ask
-  assert (major >= java_7_version) Constant_MethodType <$> lift getWord16be
+  assert (major >= java_7_version) Constant_MethodType . ConstMethodType <$> lift getWord16be
 
 parseConstantDynamic :: MajorVersionReader CPInfo
 parseConstantDynamic = do
   major <- ask
-  assert (major >= java_11_version) liftM2 Constant_Dynamic (lift getWord16be) (lift getWord16be)
+  idx <- assert (major >= java_11_version) lift getWord16be
+  Constant_Dynamic . ConstDynamic idx <$> lift getWord16be
 
 parseConstantInvokeDynamic :: MajorVersionReader CPInfo
 parseConstantInvokeDynamic = do
   major <- ask
-  assert (major >= java_7_version) liftM2 Constant_InvokeDynamic (lift getWord16be) (lift getWord16be)
+  idx <- assert (major >= java_7_version) lift getWord16be
+  Constant_InvokeDynamic . ConstInvokeDynamic idx <$> lift getWord16be
 
 parseConstantModule :: MajorVersionReader CPInfo
 parseConstantModule = do
   major <- ask
-  assert (major >= java_9_version) Constant_Module <$> lift getWord16be
+  assert (major >= java_9_version) Constant_Module . ConstModule <$> lift getWord16be
 
 parseConstantPackage :: MajorVersionReader CPInfo
 parseConstantPackage = do
   major <- ask
-  assert (major >= java_9_version) Constant_Module <$> lift getWord16be
+  assert (major >= java_9_version) Constant_Package . ConstPackage <$> lift getWord16be
 
 -- End parseConstantPoolInfo
 parseAccessFlag :: Get AccessFlags
