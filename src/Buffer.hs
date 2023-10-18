@@ -18,6 +18,7 @@ import Data.Text qualified as T
 import GHC.Base (assert)
 import Numeric (showHex)
 import Util
+import Debug.Trace (trace)
 
 parseMagic :: Get U4
 parseMagic = do
@@ -53,17 +54,17 @@ parseConstantPoolCount = getWord16be
 -- Start parseConstantPoolInfo
 parseConstantPoolInfo :: CPReader ConstantPoolInfo
 parseConstantPoolInfo = do
-  cnt <- asks cpCount
+  env <- ask 
+  cnt <- trace ("Hi: " ++ show env) asks cpCount
   xss <- parseList (cnt - 1) $ withReaderT cpMajorVersion parseCPInfo
   let (tag, info) = unzip $ concat xss
   cp <- ask
   return cp {cpTags = JVM_Constant_Invalid : tag, cpInfos = Constant_Invalid : info}
 
-data CPTI = CPTI CPTag CPInfo
-
 parseCPInfo :: MajorVersionReader [(CPTag, CPInfo)]
 parseCPInfo = do
   tag <- lift getWord8
+  trace ("tag: " ++ show tag) return ()
   case tag of
     1 -> singleton . (JVM_Constant_Utf8,) . Constant_Utf8 <$> lift parseConstantUtf8
     3 -> singleton . (JVM_Constant_Integer,) . Constant_Integer <$> lift parseConstantInteger
