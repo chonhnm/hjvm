@@ -8,6 +8,9 @@ import Control.Monad.Trans.Reader
     ask,
     local,
   )
+import Data.Dynamic
+import Util (MyErr, classFormatErr)
+
 
 parseReader :: IO ()
 parseReader = do
@@ -51,3 +54,20 @@ parseEmail = do
   lift $ print "email: " >> print env
   case env of
     Profile n a _ -> return $ n ++ show a ++ "@qq.com"
+
+hlist :: [Dynamic]
+hlist = [toDyn "string", 
+        toDyn (7::Int),
+        toDyn 'i']
+
+hlist0 :: Maybe Int 
+hlist0 = fromDynamic (head hlist)
+
+hlist1 :: Maybe String 
+hlist1 = fromDynamic (head hlist)       
+
+hlist4 :: (Typeable a) => MyErr a 
+hlist4 = fromDyn (head hlist)  $ classFormatErr  $ show $ dynTypeRep (head hlist)
+
+hlist5 :: MyErr String
+hlist5 = hlist4
