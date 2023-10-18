@@ -65,105 +65,105 @@ parseCPInfo :: MajorVersionReader [(CPTag, CPInfo)]
 parseCPInfo = do
   tag <- lift getWord8
   case tag of
-    1 -> singleton . (JVM_Constant_Utf8,) <$> lift parseConstantUtf8
-    3 -> singleton . (JVM_Constant_Integer,) <$> lift parseConstantInteger
-    4 -> singleton . (JVM_Constant_Float,) <$> lift parseConstantFloat
+    1 -> singleton . (JVM_Constant_Utf8,) . Constant_Utf8 <$> lift parseConstantUtf8
+    3 -> singleton . (JVM_Constant_Integer,) . Constant_Integer <$> lift parseConstantInteger
+    4 -> singleton . (JVM_Constant_Float,) . Constant_Float <$> lift parseConstantFloat
     5 -> do
-      info <- lift parseConstantLong
+      info <- Constant_Long <$> lift parseConstantLong
       return [(JVM_Constant_Long, info), (JVM_Constant_Invalid, Constant_Invalid)]
     6 -> do
-      info <- lift parseConstantDouble
+      info <- Constant_Double <$> lift parseConstantDouble
       return [(JVM_Constant_Double, info), (JVM_Constant_Invalid, Constant_Invalid)]
-    7 -> singleton . (JVM_Constant_Class,) <$> lift parseConstantClass
-    8 -> singleton . (JVM_Constant_String,) <$> lift parseConstantString
-    9 -> singleton . (JVM_Constant_Fieldref,) <$> lift parseConstantFieldref
-    10 -> singleton . (JVM_Constant_Methodref,) <$> lift parseConstantMethodref
-    11 -> singleton . (JVM_Constant_InterfaceMethodref,) <$> lift parseConstantInterfaceMethodref
-    12 -> singleton . (JVM_Constant_NameAndType,) <$> lift parseConstantNameAndType
-    15 -> singleton . (JVM_Constant_MethodHandle,) <$> parseConstantMethodHandle
-    16 -> singleton . (JVM_Constant_MethodType,) <$> parseConstantMethodType
-    17 -> singleton . (JVM_Constant_Dynamic,) <$> parseConstantDynamic
-    18 -> singleton . (JVM_Constant_InvokeDynamic,) <$> parseConstantInvokeDynamic
-    19 -> singleton . (JVM_Constant_Module,) <$> parseConstantModule
-    20 -> singleton . (JVM_Constant_Package,) <$> parseConstantPackage
+    7 -> (singleton . (JVM_Constant_Class,)) . Constant_Class <$> lift parseConstantClass
+    8 -> singleton . (JVM_Constant_String,) . Constant_String <$> lift parseConstantString
+    9 -> singleton . (JVM_Constant_Fieldref,) . Constant_Fieldref <$> lift parseConstantFieldref
+    10 -> singleton . (JVM_Constant_Methodref,) . Constant_Methodref <$> lift parseConstantMethodref
+    11 -> singleton . (JVM_Constant_InterfaceMethodref,) . Constant_InterfaceMethodref <$> lift parseConstantInterfaceMethodref
+    12 -> singleton . (JVM_Constant_NameAndType,) . Constant_NameAndType <$> lift parseConstantNameAndType
+    15 -> singleton . (JVM_Constant_MethodHandle,) . Constant_MethodHandle <$> parseConstantMethodHandle
+    16 -> singleton . (JVM_Constant_MethodType,) . Constant_MethodType <$> parseConstantMethodType
+    17 -> singleton . (JVM_Constant_Dynamic,) . Constant_Dynamic <$> parseConstantDynamic
+    18 -> singleton . (JVM_Constant_InvokeDynamic,) . Constant_InvokeDynamic <$> parseConstantInvokeDynamic
+    19 -> singleton . (JVM_Constant_Module,) . Constant_Module <$> parseConstantModule
+    20 -> singleton . (JVM_Constant_Package,) . Constant_Package <$> parseConstantPackage
     _ -> fail $ "unknow constant pool tag: " ++ show (toInteger tag)
 
-parseConstantUtf8 :: Get CPInfo
+parseConstantUtf8 :: Get ConstUtf8
 parseConstantUtf8 = do
   len <- getWord16be
   str <- getByteString $ fromIntegral len
-  return $ Constant_Utf8 . ConstUtf8 $ decodeUtf8Jvm str
+  return $ ConstUtf8 $ decodeUtf8Jvm str
 
-parseConstantInteger :: Get CPInfo
-parseConstantInteger = Constant_Integer . ConstInteger <$> getInt32be
+parseConstantInteger :: Get ConstInteger
+parseConstantInteger = ConstInteger <$> getInt32be
 
-parseConstantFloat :: Get CPInfo
-parseConstantFloat = Constant_Float . ConstFloat <$> getFloatbe
+parseConstantFloat :: Get ConstFloat
+parseConstantFloat = ConstFloat <$> getFloatbe
 
-parseConstantLong :: Get CPInfo
-parseConstantLong = Constant_Long . ConstLong <$> getInt64be
+parseConstantLong :: Get ConstLong
+parseConstantLong = ConstLong <$> getInt64be
 
-parseConstantDouble :: Get CPInfo
-parseConstantDouble = Constant_Double . ConstDouble <$> getDoublebe
+parseConstantDouble :: Get ConstDouble
+parseConstantDouble = ConstDouble <$> getDoublebe
 
-parseConstantClass :: Get CPInfo
-parseConstantClass = Constant_Class . ConstClass <$> getWord16be
+parseConstantClass :: Get ConstClass
+parseConstantClass = ConstClass <$> getWord16be
 
-parseConstantString :: Get CPInfo
-parseConstantString = Constant_String . ConstString <$> getWord16be
+parseConstantString :: Get ConstString
+parseConstantString = ConstString <$> getWord16be
 
-parseConstantFieldref :: Get CPInfo
+parseConstantFieldref :: Get ConstFieldref
 parseConstantFieldref = do
   idx <- getWord16be
-  Constant_Fieldref . ConstFieldref idx <$> getWord16be
+  ConstFieldref idx <$> getWord16be
 
-parseConstantMethodref :: Get CPInfo
+parseConstantMethodref :: Get ConstMethodref
 parseConstantMethodref = do
   idx <- getWord16be
-  Constant_Methodref . ConstMethodref idx <$> getWord16be
+  ConstMethodref idx <$> getWord16be
 
-parseConstantInterfaceMethodref :: Get CPInfo
+parseConstantInterfaceMethodref :: Get ConstInterfaceMethodref
 parseConstantInterfaceMethodref = do
   idx <- getWord16be
-  Constant_InterfaceMethodref . ConstInterfaceMethodref idx <$> getWord16be
+  ConstInterfaceMethodref idx <$> getWord16be
 
-parseConstantNameAndType :: Get CPInfo
+parseConstantNameAndType :: Get ConstNameAndType
 parseConstantNameAndType = do
   name <- getWord16be
-  Constant_NameAndType . ConstNameAndType name <$> getWord16be
+  ConstNameAndType name <$> getWord16be
 
-parseConstantMethodHandle :: MajorVersionReader CPInfo
+parseConstantMethodHandle :: MajorVersionReader ConstMethodHandle
 parseConstantMethodHandle = do
   major <- ask
   kind <- assert (major >= java_7_version) lift getWord8
-  Constant_MethodHandle . ConstMethodHandle (toEnum $ fromIntegral kind) <$> lift getWord16be
+  ConstMethodHandle (toEnum $ fromIntegral kind) <$> lift getWord16be
 
-parseConstantMethodType :: MajorVersionReader CPInfo
+parseConstantMethodType :: MajorVersionReader ConstMethodType
 parseConstantMethodType = do
   major <- ask
-  assert (major >= java_7_version) Constant_MethodType . ConstMethodType <$> lift getWord16be
+  assert (major >= java_7_version) ConstMethodType <$> lift getWord16be
 
-parseConstantDynamic :: MajorVersionReader CPInfo
+parseConstantDynamic :: MajorVersionReader ConstDynamic
 parseConstantDynamic = do
   major <- ask
   idx <- assert (major >= java_11_version) lift getWord16be
-  Constant_Dynamic . ConstDynamic idx <$> lift getWord16be
+  ConstDynamic idx <$> lift getWord16be
 
-parseConstantInvokeDynamic :: MajorVersionReader CPInfo
+parseConstantInvokeDynamic :: MajorVersionReader ConstInvokeDynamic
 parseConstantInvokeDynamic = do
   major <- ask
   idx <- assert (major >= java_7_version) lift getWord16be
-  Constant_InvokeDynamic . ConstInvokeDynamic idx <$> lift getWord16be
+  ConstInvokeDynamic idx <$> lift getWord16be
 
-parseConstantModule :: MajorVersionReader CPInfo
+parseConstantModule :: MajorVersionReader ConstModule
 parseConstantModule = do
   major <- ask
-  assert (major >= java_9_version) Constant_Module . ConstModule <$> lift getWord16be
+  assert (major >= java_9_version) ConstModule <$> lift getWord16be
 
-parseConstantPackage :: MajorVersionReader CPInfo
+parseConstantPackage :: MajorVersionReader ConstPackage
 parseConstantPackage = do
   major <- ask
-  assert (major >= java_9_version) Constant_Package . ConstPackage <$> lift getWord16be
+  assert (major >= java_9_version) ConstPackage <$> lift getWord16be
 
 -- End parseConstantPoolInfo
 parseAccessFlag :: Get AccessFlags
