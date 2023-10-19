@@ -342,9 +342,7 @@ data StackMapFrame
   | Full_frame
       { frame_type :: U1, -- 255
         _offset_delta :: U2,
-        _number_of_locals :: U2,
         _locals :: [VerificationTypeInfo],
-        _number_of_stack_items :: U2,
         _stack :: [VerificationTypeInfo]
       }
   deriving (Show)

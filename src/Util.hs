@@ -31,5 +31,5 @@ data CheckedError
 
 type MyErr = Either AppErr
 
-classFormatErr :: String -> Either AppErr b
+classFormatErr :: String -> Either AppErr a
 classFormatErr str = Left $ ClassFormatError str

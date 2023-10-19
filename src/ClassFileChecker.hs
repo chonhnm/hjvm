@@ -20,8 +20,8 @@ instance AttrInfoLen AttributeInfo where
 instance AttrInfoLen AttrInfo where
   attrLen (ConstantValue _) = 2
   attrLen (Code (CodeAttr _ _ codes ets attrs)) =
-    12 + fromIntegral (length codes) + fromIntegral (length ets) * 8 + sum (map attrLen attrs)
-  attrLen (StackMapTable _) = 0
+    12 + fromIntegral (length codes) + 8 * fromIntegral (length ets) + sum (map attrLen attrs)
+  attrLen (StackMapTable entries) = 2 + sum (map attrLen entries)
   attrLen (Exceptions xs) = 2 + 2 * fromIntegral (length xs)
   attrLen (InnerClasses xs) = 2 + 8 * fromIntegral (length xs)
   attrLen (EnclosingMethod _ _) = 4
@@ -63,6 +63,32 @@ instance AttrInfoLen AttrInfo where
       )
   attrLen (PermittedSubclasses xs) = 2 + 2 * fromIntegral (length xs)
 
+instance AttrInfoLen StackMapFrame where 
+  attrLen (Same_Frame _) = 1
+  attrLen (Same_locals_1_stack_item_frame _ xs) = 1 + stacksLen xs   
+  attrLen (Same_locals_1_stack_item_frame_extented _ _ xs) = 3 + stacksLen xs
+  attrLen Chop_frame{} = 3
+  attrLen Same_frame_extented{} = 3
+  attrLen (Append_frame _ _ xs) = 3 + stacksLen xs 
+  attrLen (Full_frame _ _ locals stacks ) = 7 + stacksLen locals + stacksLen stacks 
+
+stacksLen :: [VerificationTypeInfo] -> U4
+stacksLen xs = sum (map attrLen xs)
+
+
+
+instance AttrInfoLen VerificationTypeInfo where 
+  attrLen Top_variable_info = 1
+  attrLen Integer_variable_info = 1
+  attrLen Float_variable_info = 1
+  attrLen Double_variable_info = 1
+  attrLen Long_variable_info = 1
+  attrLen Null_variable_info = 1
+  attrLen UninitializedThis_variable_info = 1
+  attrLen Object_variable_info{} = 3
+  attrLen Uninitialized_variable_info{} = 3
+
+
 instance AttrInfoLenChecker AttributeInfo where
   checkLength (AttributeInfo _ info)
     | typeOf info
@@ -98,7 +124,7 @@ checkAttrLength cf =
           $ concat fxss ++ concat mxss ++ xs
    in case err of
         Nothing -> return ()
-        Just (Just str, attr) -> classFormatErr (str ++ ";attr:" ++ show attr)
+        Just (Just str, attr) -> classFormatErr (str ++ "Attrinfo:" ++ show attr)
         Just _ -> classFormatErr $ "Unexpected: " ++ show err
   where
     safeHead [] = Nothing

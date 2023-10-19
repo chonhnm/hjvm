@@ -290,7 +290,7 @@ parseStackMapFrame = do
       locals <- parseList numberOfLocals parseVerificationTypeInfo
       nosi <- lift getWord16be
       stack <- parseList nosi parseVerificationTypeInfo
-      return $ Full_frame tag offset numberOfLocals locals nosi stack
+      return $ Full_frame tag offset locals stack
     _ -> error $ "Unknown StackMapFrame frame_type: " ++ show tag
 
 parseVerificationTypeInfo :: ClassFileReader VerificationTypeInfo
