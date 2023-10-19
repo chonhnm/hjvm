@@ -1,4 +1,4 @@
-module Pretty where
+module Pretty(ppClassFile) where
 
 import ClassFile
 import Control.Monad.Trans.Reader (ReaderT, asks, local, runReader)

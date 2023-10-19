@@ -19,6 +19,7 @@ import Data.Text qualified as T
 import GHC.Base (assert)
 import Numeric (showHex)
 import Util
+import Pretty (ppClassFile)
 
 parseMagic :: Get U4
 parseMagic = do
@@ -761,11 +762,13 @@ parseClassFile = do
 runParseClassFile :: FilePath -> IO ()
 runParseClassFile file = do
   input <- BL.readFile file
-  let cf = loadClassFile input
-  case cf of
+  let parsed = loadClassFile input
+  case parsed of
     Left err -> do
       print $ show err
-    Right _ -> print "classfile: ok!"
+    Right cf -> do 
+      print "classfile: ok!"
+      putStrLn $ ppClassFile cf 
 
 loadClassFile :: ByteString -> MyErr ClassFile
 loadClassFile file = do
