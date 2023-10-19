@@ -8,8 +8,14 @@ import Text.PrettyPrint (Doc, ($$), (<+>), (<>))
 import Text.PrettyPrint qualified as PP
 import Util (U2)
 import Prelude hiding ((<>))
+import Debug.Trace (trace)
+import Data.STRef (STRef, readSTRef, newSTRef, modifySTRef)
+import Control.Monad.Trans.Class (MonadTrans(lift))
+import Data.IORef (readIORef)
+import Control.Monad.ST (ST, runST)
 
 type CPReader = ReaderT Env Identity
+
 
 data Env = Env
   { envClassFile :: ClassFile,
@@ -21,7 +27,7 @@ ppClassFile :: ClassFile -> String
 ppClassFile cf = do
   let cp = constantPool cf
   let initEnv = Env cf cp 0
-  PP.render $ runReader (ppr cp) initEnv
+  PP.render $ runReader (ppr cf) initEnv
 
 class Pretty p where
   ppr :: p -> CPReader Doc
@@ -32,6 +38,7 @@ instance Pretty ClassFile where
 pprClassFile :: CPReader Doc
 pprClassFile = do
   cf <- asks envClassFile
+  trace (show cf) return ()
   let minor = minorVersion cf
   let major = majorVersion cf
   let title = PP.text "public class"
@@ -48,7 +55,7 @@ pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
   cp <- asks envPool
   let infos = cpInfos cp
-  let title = PP.text "Constant pool:\n"
+  let title = PP.text "Constant pool:"
   (title $$) <$> pprCPInfos infos
 
 pprCPInfos :: [CPInfo] -> CPReader Doc
@@ -83,6 +90,11 @@ pprCPInfo (Constant_Dynamic x) = ppr x
 pprCPInfo (Constant_InvokeDynamic x) = ppr x
 pprCPInfo (Constant_Module x) = ppr x
 pprCPInfo (Constant_Package x) = ppr x
+
+incCPIdx :: CPReader Doc
+incCPIdx = undefined
+
+
 
 ppIdx :: U2 -> Doc
 ppIdx idx = PP.sizedText 5 ("#" ++ show idx)

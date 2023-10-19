@@ -4,15 +4,19 @@
 module Test where
 
 import ClassFile
+import Control.Monad.ST (ST, runST)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader
-  ( ReaderT (runReaderT),
+  ( Reader,
+    ReaderT (runReaderT),
     ask,
+    asks,
     local,
   )
 import Data.Dynamic
-import Util (MyErr, classFormatErr)
-import qualified Data.Text as T
+import Data.STRef (STRef, modifySTRef', readSTRef, newSTRef)
+import Data.Text qualified as T
+import Util (MyErr, U2, classFormatErr)
 
 parseReader :: IO ()
 parseReader = do
@@ -92,6 +96,45 @@ lii = [toDyn <$> l2, toDyn <$> l3]
 tags :: CPInfo2 a -> CPTag
 tags (CPInfo2 tag _) = tag
 
-
 myUtf8Dyn :: MyErr Dynamic
 myUtf8Dyn = return $ toDyn $ ConstUtf8 $ T.pack "hh"
+
+-- ST
+
+data Env s = Env {envCP :: ClassFile, envIdx :: ST s (STRef s Int)}
+
+newtype Myreader a = Myreader (forall s. ReaderT (Env s) (ST s) a)
+
+onRef :: (forall s. ST s (STRef s Int) -> ST s a) -> Myreader a
+onRef f = Myreader $ asks envIdx >>= lift . f
+
+readIt :: forall s. ST s (STRef s Int) -> ST s Int
+readIt st = do
+  ref <- st
+  readSTRef ref
+
+addOne :: forall s. ST s (STRef s Int) -> ST s Int
+addOne st = do
+  ref <- st
+  modifySTRef' ref (+ 1)
+  readSTRef ref
+
+addInt :: forall s. Int -> ST s (STRef s Int) -> ST s Int
+addInt n st = do
+  ref <- st
+  modifySTRef' ref (+ n)
+  readSTRef ref
+
+oneRound :: Myreader Int
+oneRound = onRef addOne
+
+twoRound :: Myreader Int
+twoRound = onRef $ addInt 2
+
+threeRound :: Myreader Int
+threeRound = onRef $ addInt 3
+
+emptyEnv = Env{envIdx = newSTRef 0}
+
+runMyreader :: Myreader a -> a 
+runMyreader (Myreader r) =runST $  runReaderT r emptyEnv
