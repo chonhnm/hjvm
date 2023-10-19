@@ -8,7 +8,7 @@ import ClassFileParser (checkConstantPoolInfo)
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local, withReaderT)
-import Data.Binary (Get, Word8, getWord8)
+import Data.Binary (Get, getWord8)
 import Data.Binary.Get (getDoublebe, getFloatbe, getInt32be, getInt64be, getWord16be, getWord32be, isEmpty, runGet)
 import Data.ByteString qualified as B
 import Data.ByteString.Lazy (ByteString)
@@ -16,7 +16,6 @@ import Data.ByteString.Lazy qualified as BL
 import Data.Char (chr)
 import Data.List (singleton)
 import Data.Text qualified as T
-import Debug.Trace (trace)
 import GHC.Base (assert)
 import Numeric (showHex)
 import Util
@@ -55,35 +54,24 @@ parseConstantPoolCount = getWord16be
 -- Start parseConstantPoolInfo
 parseConstantPoolInfo :: CPReader ConstantPoolInfo
 parseConstantPoolInfo = do
-  env <- ask
   cnt <- asks cpCount
-  trace ("cnt" ++ show (cnt-1) ++"Hi: " ++ show env)  return ()
-  xss <- parseList (cnt - 1) $ withReaderT cpMajorVersion parseCPInfo
+  xss <- withReaderT cpMajorVersion $ parseCPInfos (cnt - 1)
   let (tag, info) = unzip $ concat xss
   cp <- ask
   return cp {cpTags = JVM_Constant_Invalid : tag, cpInfos = Constant_Invalid : info}
 
-showTT :: Word8 -> String
-showTT 1 = "Utf8"
-showTT 3 = "Integer"
-showTT 4 = "Float"
-showTT 5 = "Long"
-showTT 6 = "Double"
-showTT 7 = "Class"
-showTT 8 = "String"
-showTT 9 = "Fieldref"
-showTT 10 = "Methodref"
-showTT 11 = "InterfaceMethodref"
-showTT 12 = "NameAndType"
-showTT 15 = "MethodHandle"
-showTT 16 = "MethodType"
-showTT 17 = "Dynamic"
-showTT 18 = "InvokeDynamic"
-showTT 19 = "Module"
-showTT 20 = "Package"
-showTT _ = "Error"
+parseCPInfos :: U2 -> MajorVersionReader [[CPTI]]
+parseCPInfos n
+  | n == 0 = return []
+  | n < 0 = error "Constant Pool Count unmatch real size due to Long or Double."
+  | otherwise = do
+      xs <- parseCPInfo
+      xss <- parseCPInfos (n - fromIntegral (length xs))
+      return $ xs : xss
 
-parseCPInfo :: MajorVersionReader [(CPTag, CPInfo)]
+type CPTI = (CPTag, CPInfo)
+
+parseCPInfo :: MajorVersionReader [CPTI]
 parseCPInfo = do
   tag <- lift getWord8
   -- trace ("tag: " ++ showTT tag) return ()
@@ -115,9 +103,8 @@ parseConstantUtf8 :: Get ConstUtf8
 parseConstantUtf8 = do
   len <- getWord16be
   chs <- parseList len getWord8
-  let str = B.pack chs 
-  trace (show str) return ()
-  return $ ConstUtf8 $ decodeUtf8Jvm (B.pack chs)
+  let str = B.pack chs
+  return $ ConstUtf8 $ decodeUtf8Jvm str
 
 parseConstantInteger :: Get ConstInteger
 parseConstantInteger = ConstInteger <$> getInt32be
