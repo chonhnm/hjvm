@@ -1,33 +1,30 @@
-module Pretty(ppClassFile) where
+module Pretty (ppClassFile) where
 
 import ClassFile
-import Control.Monad.Trans.Reader (ReaderT, asks, local, runReader)
-import Data.Functor.Identity (Identity)
+import Control.Monad.Trans.Class (MonadTrans (lift))
+import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
+import Control.Monad.Trans.State (State, evalState, get, modify)
 import Data.Text qualified as T
 import Text.PrettyPrint (Doc, ($$), (<+>), (<>))
 import Text.PrettyPrint qualified as PP
+import Text.Printf (printf)
 import Util (U2)
 import Prelude hiding ((<>))
-import Debug.Trace (trace)
-import Data.STRef (STRef, readSTRef, newSTRef, modifySTRef)
-import Control.Monad.Trans.Class (MonadTrans(lift))
-import Data.IORef (readIORef)
-import Control.Monad.ST (ST, runST)
 
-type CPReader = ReaderT Env Identity
+type CPReader = ReaderT Env (State MyState)
 
+type MyState = U2
 
 data Env = Env
   { envClassFile :: ClassFile,
-    envPool :: ConstantPoolInfo,
-    envCurPoolIdx :: U2
+    envPool :: ConstantPoolInfo
   }
 
 ppClassFile :: ClassFile -> String
 ppClassFile cf = do
   let cp = constantPool cf
-  let initEnv = Env cf cp 0
-  PP.render $ runReader (ppr cf) initEnv
+  let initEnv = Env cf cp
+  PP.render $ evalState (runReaderT (ppr cf) initEnv) 0
 
 class Pretty p where
   ppr :: p -> CPReader Doc
@@ -38,7 +35,6 @@ instance Pretty ClassFile where
 pprClassFile :: CPReader Doc
 pprClassFile = do
   cf <- asks envClassFile
-  trace (show cf) return ()
   let minor = minorVersion cf
   let major = majorVersion cf
   let title = PP.text "public class"
@@ -54,22 +50,23 @@ instance Pretty ConstantPoolInfo where
 pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
   cp <- asks envPool
-  let infos = cpInfos cp
   let title = PP.text "Constant pool:"
-  (title $$) <$> pprCPInfos infos
-
-pprCPInfos :: [CPInfo] -> CPReader Doc
-pprCPInfos [] = return PP.empty
-pprCPInfos (x : xs) = do
-  idx <- asks envCurPoolIdx
-  doc <- (ppIdx idx <>) <$> pprCPInfo x
-  doc2 <- local incIdx $ pprCPInfos xs
-  return $ doc $$ doc2
-  where
-    incIdx (Env cf cp idx) = Env cf cp (idx + 1)
+  let infos = cpInfos cp
+  let infosD = mapM ppr infos
+  (title $$) . PP.vcat <$> infosD
 
 instance Pretty CPInfo where
-  ppr = pprCPInfo
+  ppr = pprCPInfoWrap
+
+pprCPInfoWrap :: CPInfo -> CPReader Doc
+pprCPInfoWrap info = do
+  val <- pprCPInfo info
+  idx <-
+    if PP.isEmpty val
+      then return PP.empty
+      else ppIndex
+  incCPIdx
+  return $ idx <> val
 
 pprCPInfo :: CPInfo -> CPReader Doc
 pprCPInfo Constant_Invalid = return PP.empty
@@ -91,16 +88,17 @@ pprCPInfo (Constant_InvokeDynamic x) = ppr x
 pprCPInfo (Constant_Module x) = ppr x
 pprCPInfo (Constant_Package x) = ppr x
 
-incCPIdx :: CPReader Doc
-incCPIdx = undefined
+incCPIdx :: CPReader ()
+incCPIdx = lift $ modify (+ 1)
 
-
-
-ppIdx :: U2 -> Doc
-ppIdx idx = PP.sizedText 5 ("#" ++ show idx)
+ppIndex :: CPReader Doc
+ppIndex = do
+  idx <- lift get
+  let val = printf "% 5s = " $ "#" ++ show idx
+  return $ PP.sizedText 5 val
 
 ppTag :: String -> Doc
-ppTag = PP.sizedText 19
+ppTag str = PP.text $ printf "% -19s" str
 
 ppRef :: U2 -> Doc
 ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
