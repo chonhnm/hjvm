@@ -29,6 +29,7 @@ dependencies:
 - pretty
 
 default-extensions: ImportQualifiedPost
+ ,OverloadedRecordDot
 
 ghc-options:
 - -Wall

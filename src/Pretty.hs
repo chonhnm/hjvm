@@ -3,28 +3,30 @@ module Pretty (ppClassFile) where
 import ClassFile
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
-import Control.Monad.Trans.State (State, evalState, get, modify)
+import Control.Monad.Trans.State (StateT, evalStateT, get, modify)
 import Data.Text qualified as T
 import Text.PrettyPrint (Doc, ($$), (<+>), (<>))
 import Text.PrettyPrint qualified as PP
 import Text.Printf (printf)
-import Util (U2)
+import Util (MyErr, U2)
 import Prelude hiding ((<>))
 
-type CPReader = ReaderT Env (State MyState)
+type CPReader = ReaderT Env (StateT MyState MyErr)
 
 type MyState = U2
 
 data Env = Env
   { envClassFile :: ClassFile,
-    envPool :: ConstantPoolInfo
+    envConstPool :: ConstantPoolInfo
   }
 
 ppClassFile :: ClassFile -> String
 ppClassFile cf = do
   let cp = constantPool cf
   let initEnv = Env cf cp
-  PP.render $ evalState (runReaderT (ppr cf) initEnv) 0
+  PP.render $ case evalStateT (runReaderT (ppr cf) initEnv) 0 of
+    Left err -> PP.text $ "Prettyprint error: " ++ show err
+    Right str -> str
 
 class Pretty p where
   ppr :: p -> CPReader Doc
@@ -32,15 +34,21 @@ class Pretty p where
 instance Pretty ClassFile where
   ppr _ = pprClassFile
 
+lift2 :: (MonadTrans t1, MonadTrans t2, Monad m, Monad (t2 m)) => m a -> t1 (t2 m) a
+lift2 a = lift $ lift a
+
 pprClassFile :: CPReader Doc
 pprClassFile = do
   cf <- asks envClassFile
+  cp <- asks envConstPool
   let minor = minorVersion cf
   let major = majorVersion cf
-  let title = PP.text "public class"
+  ConstUtf8 cname <- lift2 $ do
+    ConstClass nidx <- cpConstClass cp cf.thisClass
+    cpConstUtf8 cp nidx
+  let title = PP.text "public class" <+> PP.text (T.unpack cname)
   let minorD = PP.text "minor version: " <> PP.integer (fromIntegral minor)
   let majorD = PP.text "major version: " <> PP.integer (fromIntegral major)
-  cp <- asks envPool
   cpD <- ppr cp
   return $ title $$ minorD $$ majorD $$ cpD
 
@@ -49,7 +57,7 @@ instance Pretty ConstantPoolInfo where
 
 pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
-  cp <- asks envPool
+  cp <- asks envConstPool
   let title = PP.text "Constant pool:"
   let infos = cpInfos cp
   let infosD = mapM ppr infos
