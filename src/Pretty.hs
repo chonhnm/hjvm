@@ -79,7 +79,7 @@ pprMajorVersion :: CPReader Doc
 pprMajorVersion = do
   cf <- asks envClassFile
   let n = cf.majorVersion
-  return $ PP.text "minor version: " <> PP.integer (fromIntegral n)
+  return $ PP.text "major version: " <> PP.integer (fromIntegral n)
 
 pprFlags :: CPReader Doc
 pprFlags = do
@@ -131,7 +131,7 @@ pprCPInfoWrap info = do
       then return PP.empty
       else ppIndex
   incCPIdx
-  return $ idx <> val
+  return $ idx <+> val
 
 pprCPInfo :: CPInfo -> CPReader Doc
 pprCPInfo Constant_Invalid = return PP.empty
@@ -157,7 +157,7 @@ incCPIdx :: CPReader ()
 incCPIdx = lift $ modify (+ 1)
 
 alignStr :: Int -> String
-alignStr = printf "%% %ds = "
+alignStr = printf "%% %ds ="
 
 ppIndex :: CPReader Doc
 ppIndex = do
