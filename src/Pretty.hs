@@ -4,9 +4,9 @@ import ClassFile
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
 import Control.Monad.Trans.State (StateT, evalStateT, get, modify)
-import Data.Text qualified as T
-import Text.PrettyPrint (Doc, ($$), (<+>), (<>))
-import Text.PrettyPrint qualified as PP
+import Data.Text as T
+import Prettyprinter ((<+>), (<>))
+import Prettyprinter qualified as PP
 import Text.Printf (printf)
 import Util (MyErr, U2)
 import Prelude hiding ((<>))
@@ -24,9 +24,12 @@ ppClassFile :: ClassFile -> String
 ppClassFile cf = do
   let cp = constantPool cf
   let initEnv = Env cf cp
-  PP.render $ case evalStateT (runReaderT (ppr cf) initEnv) 0 of
-    Left err -> PP.text $ "Prettyprint error: " ++ show err
+  show $ case evalStateT (runReaderT (ppr cf) initEnv) 0 of
+    Left err -> "Prettyprint error: " <> PP.pretty err
     Right str -> str
+
+type Doc = PP.Doc Anno
+data Anno = Emp | NonEmp  
 
 class Pretty p where
   ppr :: p -> CPReader Doc
@@ -46,11 +49,11 @@ pprClassFile = do
   ConstUtf8 cname <- lift2 $ do
     ConstClass nidx <- cpConstClass cp cf.thisClass
     cpConstUtf8 cp nidx
-  let title = PP.text "public class" <+> PP.text (T.unpack cname)
-  let minorD = PP.text "minor version: " <> PP.integer (fromIntegral minor)
-  let majorD = PP.text "major version: " <> PP.integer (fromIntegral major)
+  let title = "public class" <+> PP.pretty cname
+  let minorD = "minor version: " <> PP.pretty minor
+  let majorD = "major version: " <> PP.pretty major
   cpD <- ppr cp
-  return $ title $$ minorD $$ majorD $$ cpD
+  return $ PP.nest 4 $ PP.vsep [title, minorD, majorD, cpD]
 
 instance Pretty ConstantPoolInfo where
   ppr _ = pprConstantPoolInfo
@@ -58,10 +61,10 @@ instance Pretty ConstantPoolInfo where
 pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
   cp <- asks envConstPool
-  let title = PP.text "Constant pool:"
+  let title = "Constant pool:"
   let infos = cpInfos cp
-  let infosD = mapM ppr infos
-  (title $$) . PP.vcat <$> infosD
+  infosD <- PP.vcat <$> mapM ppr infos
+  return $ PP.nest 4 $ PP.vsep [title, infosD]
 
 instance Pretty CPInfo where
   ppr = pprCPInfoWrap
@@ -70,14 +73,14 @@ pprCPInfoWrap :: CPInfo -> CPReader Doc
 pprCPInfoWrap info = do
   val <- pprCPInfo info
   idx <-
-    if PP.isEmpty val
-      then return PP.empty
-      else ppIndex
+    case val of
+      -- _ -> return val
+      _ -> ppIndex
   incCPIdx
   return $ idx <> val
 
 pprCPInfo :: CPInfo -> CPReader Doc
-pprCPInfo Constant_Invalid = return PP.empty
+pprCPInfo Constant_Invalid = return PP.emptyDoc
 pprCPInfo (Constant_Utf8 x) = ppr x
 pprCPInfo (Constant_Integer x) = ppr x
 pprCPInfo (Constant_Float x) = ppr x
@@ -102,29 +105,29 @@ incCPIdx = lift $ modify (+ 1)
 ppIndex :: CPReader Doc
 ppIndex = do
   idx <- lift get
-  let val = printf "% 5s = " $ "#" ++ show idx
-  return $ PP.sizedText 5 val
+  let val = T.pack $ printf "% 5s = " ("#" ++ show idx)
+  return $ PP.pretty val
 
 ppTag :: String -> Doc
-ppTag str = PP.text $ printf "% -19s" str
+ppTag str = PP.pretty $ T.pack $ printf "% -19s" str
 
 ppRef :: U2 -> Doc
-ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
+ppRef idx = "#" <> PP.pretty idx
 
 instance Pretty ConstUtf8 where
-  ppr (ConstUtf8 val) = return $ ppTag "Utf8" <> PP.text (T.unpack val)
+  ppr (ConstUtf8 val) = return $ ppTag "Utf8" <> PP.pretty val
 
 instance Pretty ConstInteger where
-  ppr (ConstInteger val) = return $ ppTag "Integer" <> PP.integer (fromIntegral val)
+  ppr (ConstInteger val) = return $ ppTag "Integer" <> PP.pretty val
 
 instance Pretty ConstFloat where
-  ppr (ConstFloat val) = return $ ppTag "Float" <> PP.float val
+  ppr (ConstFloat val) = return $ ppTag "Float" <> PP.pretty val
 
 instance Pretty ConstLong where
-  ppr (ConstLong val) = return $ ppTag "Long" <> PP.integer (fromIntegral val)
+  ppr (ConstLong val) = return $ ppTag "Long" <> PP.pretty val
 
 instance Pretty ConstDouble where
-  ppr (ConstDouble val) = return $ ppTag "Double" <> PP.double val
+  ppr (ConstDouble val) = return $ ppTag "Double" <> PP.pretty val
 
 instance Pretty ConstClass where
   ppr (ConstClass val) = return $ ppTag "Class" <> ppRef val
@@ -137,7 +140,7 @@ instance Pretty ConstFieldref where
     return $
       ppTag "Fieldref"
         <> ppRef cIdx
-        <> PP.char '.'
+        <> PP.dot
         <> ppRef ntIdx
 
 instance Pretty ConstMethodref where
@@ -145,7 +148,7 @@ instance Pretty ConstMethodref where
     return $
       ppTag "Methodref"
         <> ppRef cIdx
-        <> PP.char '.'
+        <> PP.dot
         <> ppRef ntIdx
 
 instance Pretty ConstInterfaceMethodref where
@@ -153,7 +156,7 @@ instance Pretty ConstInterfaceMethodref where
     return $
       ppTag "InterfaceMethodref"
         <> ppRef cIdx
-        <> PP.char '.'
+        <> PP.dot
         <> ppRef ntIdx
 
 instance Pretty ConstNameAndType where
@@ -161,14 +164,14 @@ instance Pretty ConstNameAndType where
     return $
       ppTag "NameAndType"
         <> ppRef nIdx
-        <> PP.char ':'
+        <> PP.colon
         <> ppRef dIdx
 
 instance Pretty ConstMethodHandle where
   ppr (ConstMethodHandle kind idx) =
     return $
       ppTag "MethodHandle"
-        <> PP.text (show kind)
+        <> PP.pretty (T.pack $ show kind)
         <+> ppRef idx
 
 instance Pretty ConstMethodType where
@@ -178,7 +181,7 @@ instance Pretty ConstDynamic where
   ppr (ConstDynamic attrIdx ntIdx) =
     return $
       ppTag "Dynamic"
-        <> PP.text "attr"
+        <> "attr"
         <> ppRef attrIdx
         <+> ppRef ntIdx
 
@@ -186,7 +189,7 @@ instance Pretty ConstInvokeDynamic where
   ppr (ConstInvokeDynamic attrIdx ntIdx) =
     return $
       ppTag "InvokeDynamic"
-        <> PP.text "attr"
+        <> "attr"
         <> ppRef attrIdx
         <+> ppRef ntIdx
 
