@@ -49,15 +49,27 @@ pprClassFile = do
   let minor = minorVersion cf
   let major = majorVersion cf
   let cidx = thisClass cf
-  ConstUtf8 cname <- lift2 $ getClassName cf
-  let title = PP.text "public class" <+> PP.text (T.unpack cname)
-  let minorDoc = PP.text "minor version: " <> PP.integer (fromIntegral minor)
-  let majorDoc = PP.text "major version: " <> PP.integer (fromIntegral major)
-  let thisClassDoc = PP.text "this_class: " <> ppRef cidx <> ppComment cname
+  cname <- lift2 $ getClassName cf
+  let title = ppClassTitle cname
+  let minorDoc = ppMinorVersion minor
+  let majorDoc = ppMajorVersion major
+  let thisClassDoc = ppThisClass cidx cname
 
   let classDoc = hang 2 [title, minorDoc, majorDoc, thisClassDoc]
   cpD <- ppr cp
   return $ PP.vcat [classDoc, cpD]
+
+ppClassTitle :: ConstUtf8 -> Doc
+ppClassTitle (ConstUtf8 name) = PP.text "public class" <+> PP.text (T.unpack name)
+
+ppMinorVersion :: U2 -> Doc
+ppMinorVersion n = PP.text "minor version: " <> PP.integer (fromIntegral n)
+
+ppMajorVersion :: U2 -> Doc
+ppMajorVersion n = PP.text "minor version: " <> PP.integer (fromIntegral n)
+
+ppThisClass :: CPIndex -> ConstUtf8 -> Doc
+ppThisClass idx (ConstUtf8 name) = PP.text "this_class: " <> ppRef idx <> ppComment name
 
 instance Pretty ConstantPoolInfo where
   ppr _ = pprConstantPoolInfo
@@ -106,14 +118,14 @@ pprCPInfo (Constant_Package x) = ppr x
 incCPIdx :: CPReader ()
 incCPIdx = lift $ modify (+ 1)
 
-alignStr :: Int -> String 
+alignStr :: Int -> String
 alignStr = printf "%% %ds = "
 
 ppIndex :: CPReader Doc
 ppIndex = do
   idx <- lift get
   cp <- asks envConstPool
-  let size = 1 + digitLength (cpCount cp) 
+  let size = 1 + digitLength (cpCount cp)
   let val = printf (alignStr size) $ "#" ++ show idx
   return $ PP.sizedText 5 val
 
