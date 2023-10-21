@@ -16,7 +16,7 @@ import Prelude hiding ((<>))
 indentOfSubItem :: Int
 indentOfSubItem  = 2 
 indentOfRef :: Int
-indentOfRef = 25
+indentOfRef = 19
 indentOfComment :: Int
 indentOfComment = 40
 
@@ -117,7 +117,7 @@ pprConstantPoolInfo = do
   cp <- asks envConstPool
   let title = PP.text "Constant pool:"
   infosDoc <- mapM ppr $ cpInfos cp
-  let cpDoc = hang 2 (title : infosDoc)
+  let cpDoc = hang indentOfSubItem (title : infosDoc)
   return cpDoc
 
 instance Pretty CPInfo where
@@ -165,10 +165,10 @@ ppIndex = do
   cp <- asks envConstPool
   let size = 1 + digitLength (cpCount cp)
   let val = printf (alignStr size) $ "#" ++ show idx
-  return $ PP.sizedText 5 val
+  return $ PP.text val
 
-ppTag :: String -> Doc
-ppTag str = PP.text $ printf "% -19s" str
+ppTag :: String -> Doc -> Doc
+ppTag str doc = PP.text str $$ PP.nest indentOfRef doc  
 
 ppRef :: U2 -> Doc
 ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
@@ -177,31 +177,31 @@ ppComment :: T.Text -> Doc
 ppComment s = PP.nest indentOfComment $ PP.text "//" <+> PP.text (T.unpack s)
 
 instance Pretty ConstUtf8 where
-  ppr (ConstUtf8 val) = return $ ppTag "Utf8" <> PP.text (T.unpack val)
+  ppr (ConstUtf8 val) = return $ ppTag "Utf8" $ PP.text (T.unpack val)
 
 instance Pretty ConstInteger where
-  ppr (ConstInteger val) = return $ ppTag "Integer" <> PP.integer (fromIntegral val)
+  ppr (ConstInteger val) = return $ ppTag "Integer" $ PP.integer (fromIntegral val)
 
 instance Pretty ConstFloat where
-  ppr (ConstFloat val) = return $ ppTag "Float" <> PP.float val
+  ppr (ConstFloat val) = return $ ppTag "Float" $ PP.float val
 
 instance Pretty ConstLong where
-  ppr (ConstLong val) = return $ ppTag "Long" <> PP.integer (fromIntegral val)
+  ppr (ConstLong val) = return $ ppTag "Long" $ PP.integer (fromIntegral val)
 
 instance Pretty ConstDouble where
-  ppr (ConstDouble val) = return $ ppTag "Double" <> PP.double val
+  ppr (ConstDouble val) = return $ ppTag "Double" $ PP.double val
 
 instance Pretty ConstClass where
-  ppr (ConstClass val) = return $ ppTag "Class" <> ppRef val
+  ppr (ConstClass val) = return $ ppTag "Class" $ ppRef val
 
 instance Pretty ConstString where
-  ppr (ConstString val) = return $ ppTag "String" <> ppRef val
+  ppr (ConstString val) = return $ ppTag "String" $ ppRef val
 
 instance Pretty ConstFieldref where
   ppr (ConstFieldref cIdx ntIdx) =
     return $
       ppTag "Fieldref"
-        <> ppRef cIdx
+        $ ppRef cIdx
         <> PP.char '.'
         <> ppRef ntIdx
 
@@ -209,7 +209,7 @@ instance Pretty ConstMethodref where
   ppr (ConstMethodref cIdx ntIdx) =
     return $
       ppTag "Methodref"
-        <> ppRef cIdx
+        $ ppRef cIdx
         <> PP.char '.'
         <> ppRef ntIdx
 
@@ -217,7 +217,7 @@ instance Pretty ConstInterfaceMethodref where
   ppr (ConstInterfaceMethodref cIdx ntIdx) =
     return $
       ppTag "InterfaceMethodref"
-        <> ppRef cIdx
+        $ ppRef cIdx
         <> PP.char '.'
         <> ppRef ntIdx
 
@@ -225,7 +225,7 @@ instance Pretty ConstNameAndType where
   ppr (ConstNameAndType nIdx dIdx) =
     return $
       ppTag "NameAndType"
-        <> ppRef nIdx
+        $ ppRef nIdx
         <> PP.char ':'
         <> ppRef dIdx
 
@@ -233,17 +233,17 @@ instance Pretty ConstMethodHandle where
   ppr (ConstMethodHandle kind idx) =
     return $
       ppTag "MethodHandle"
-        <> PP.text (show kind)
+        $ PP.text (show kind)
         <+> ppRef idx
 
 instance Pretty ConstMethodType where
-  ppr (ConstMethodType dIdx) = return $ ppTag "MethodType" <> ppRef dIdx
+  ppr (ConstMethodType dIdx) = return $ ppTag "MethodType" $ ppRef dIdx
 
 instance Pretty ConstDynamic where
   ppr (ConstDynamic attrIdx ntIdx) =
     return $
       ppTag "Dynamic"
-        <> PP.text "attr"
+        $ PP.text "attr"
         <> ppRef attrIdx
         <+> ppRef ntIdx
 
@@ -251,12 +251,12 @@ instance Pretty ConstInvokeDynamic where
   ppr (ConstInvokeDynamic attrIdx ntIdx) =
     return $
       ppTag "InvokeDynamic"
-        <> PP.text "attr"
+        $ PP.text "attr"
         <> ppRef attrIdx
         <+> ppRef ntIdx
 
 instance Pretty ConstModule where
-  ppr (ConstModule nIdx) = return $ ppTag "Module" <> ppRef nIdx
+  ppr (ConstModule nIdx) = return $ ppTag "Module" $ ppRef nIdx
 
 instance Pretty ConstPackage where
-  ppr (ConstPackage nIdx) = return $ ppTag "Package" <> ppRef nIdx
+  ppr (ConstPackage nIdx) = return $ ppTag "Package" $ ppRef nIdx
