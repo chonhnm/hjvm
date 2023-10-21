@@ -1,7 +1,8 @@
 module Pretty (ppClassFile) where
 
+import AccessFlags (IAccessFlags (encodeFlags, encodeHex))
 import ClassFile
-import ClassFileParser (ClassFileParser (getClassName))
+import ClassFileParser (ClassFileParser (getClassName, getSuperClassName))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
 import Control.Monad.Trans.State (StateT, evalStateT, get, modify)
@@ -41,12 +42,17 @@ hang n (x : xs) = PP.hang x n $ PP.vcat xs
 
 pprClassFile :: CPReader Doc
 pprClassFile = do
-  title <- pprClassTitle
-  minorDoc <- pprMinorVersion
-  majorDoc <- pprMajorVersion
-  thisClassDoc <- pprThisClass
+  subDoc <-
+    sequence
+      [ pprClassTitle,
+        pprMinorVersion,
+        pprMajorVersion,
+        pprFlags,
+        pprThisClass,
+        pprSuperClass
+      ]
+  let classDoc = hang 2 subDoc
   cpDoc <- pprConstantPoolInfo
-  let classDoc = hang 2 [title, minorDoc, majorDoc, thisClassDoc]
   return $ PP.vcat [classDoc, cpDoc]
 
 pprClassTitle :: CPReader Doc
@@ -67,12 +73,26 @@ pprMajorVersion = do
   let n = cf.majorVersion
   return $ PP.text "minor version: " <> PP.integer (fromIntegral n)
 
+pprFlags :: CPReader Doc
+pprFlags = do
+  cf <- asks envClassFile
+  let flags = cf.accessFlags
+  let enHex = PP.text $ encodeHex flags
+  let enFlags = PP.punctuate PP.comma $ map (PP.text . show) $ encodeFlags flags
+
+  return $ PP.text "flags:" <+> PP.parens enHex <+> PP.hsep enFlags
+
 pprThisClass :: CPReader Doc
 pprThisClass = do
   cf <- asks envClassFile
-  let idx = cf.thisClass
   ConstUtf8 name <- lift2 $ getClassName cf
-  return $ PP.text "this_class: " <> ppRef idx <> ppComment name
+  return $ PP.text "this_class: " <> ppRef cf.thisClass <> ppComment name
+
+pprSuperClass :: CPReader Doc
+pprSuperClass = do
+  cf <- asks envClassFile
+  ConstUtf8 name <- lift2 $ getSuperClassName cf
+  return $ PP.text "super_class: " <> ppRef cf.superClass <> ppComment name
 
 pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
