@@ -75,7 +75,6 @@ type CPTI = (CPTag, CPInfo)
 parseCPInfo :: MajorVersionReader [CPTI]
 parseCPInfo = do
   tag <- lift getWord8
-  -- trace ("tag: " ++ showTT tag) return ()
   case tag of
     1 -> singleton . (JVM_Constant_Utf8,) . Constant_Utf8 <$> lift parseConstantUtf8
     3 -> singleton . (JVM_Constant_Integer,) . Constant_Integer <$> lift parseConstantInteger
@@ -673,8 +672,7 @@ parseAttributeInfo = do
   case maybeAttrTag of
     Left err -> error $ show err
     Right (ConstUtf8 attrTag) -> do
-      let str = T.unpack attrTag
-      attr <- case str of
+      attr <- case attrTag of
         "ConstantValue" -> parseConstantValue
         "Code" -> parseCode
         "StackMapTable" -> parseStackMapTable
@@ -705,7 +703,7 @@ parseAttributeInfo = do
         "NestMembers" -> parseNestMembers
         "Record" -> parseRecord
         "PermittedSubclasses" -> parsePermittedSubclasses
-        _ -> error $ "Unspported attribute: " ++ str
+        _ -> error $ "Unspported attribute: " ++ T.unpack attrTag
       return $ AttributeInfo len attr
 
 type ClassFileReader = ReaderT ClassFile Get
@@ -765,10 +763,10 @@ runParseClassFile file = do
   let parsed = loadClassFile input
   case parsed of
     Left err -> do
-      print $ show err
-    Right cf -> do 
-      print "classfile: ok!"
-      putStrLn $ ppClassFile cf 
+      print err
+    Right cf -> do
+      putStrLn "classfile: ok!"
+      putStrLn $ ppClassFile cf
 
 loadClassFile :: ByteString -> MyErr ClassFile
 loadClassFile file = do
