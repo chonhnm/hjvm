@@ -25,15 +25,12 @@ ppClassFile :: ClassFile -> String
 ppClassFile cf = do
   let cp = constantPool cf
   let initEnv = Env cf cp
-  PP.render $ case evalStateT (runReaderT (ppr cf) initEnv) 0 of
+  PP.render $ case evalStateT (runReaderT pprClassFile initEnv) 0 of
     Left err -> PP.text $ "Prettyprint error: " ++ show err
     Right str -> str
 
 class Pretty p where
   ppr :: p -> CPReader Doc
-
-instance Pretty ClassFile where
-  ppr _ = pprClassFile
 
 lift2 :: (MonadTrans t1, MonadTrans t2, Monad m, Monad (t2 m)) => m a -> t1 (t2 m) a
 lift2 a = lift $ lift a
@@ -44,35 +41,38 @@ hang n (x : xs) = PP.hang x n $ PP.vcat xs
 
 pprClassFile :: CPReader Doc
 pprClassFile = do
-  cf <- asks envClassFile
-  cp <- asks envConstPool
-  let minor = minorVersion cf
-  let major = majorVersion cf
-  let cidx = thisClass cf
-  cname <- lift2 $ getClassName cf
-  let title = ppClassTitle cname
-  let minorDoc = ppMinorVersion minor
-  let majorDoc = ppMajorVersion major
-  let thisClassDoc = ppThisClass cidx cname
-
+  title <- pprClassTitle
+  minorDoc <- pprMinorVersion
+  majorDoc <- pprMajorVersion
+  thisClassDoc <- pprThisClass
+  cpDoc <- pprConstantPoolInfo
   let classDoc = hang 2 [title, minorDoc, majorDoc, thisClassDoc]
-  cpD <- ppr cp
-  return $ PP.vcat [classDoc, cpD]
+  return $ PP.vcat [classDoc, cpDoc]
 
-ppClassTitle :: ConstUtf8 -> Doc
-ppClassTitle (ConstUtf8 name) = PP.text "public class" <+> PP.text (T.unpack name)
+pprClassTitle :: CPReader Doc
+pprClassTitle = do
+  cf <- asks envClassFile
+  ConstUtf8 name <- lift2 $ getClassName cf
+  return $ PP.text "public class" <+> PP.text (T.unpack name)
 
-ppMinorVersion :: U2 -> Doc
-ppMinorVersion n = PP.text "minor version: " <> PP.integer (fromIntegral n)
+pprMinorVersion :: CPReader Doc
+pprMinorVersion = do
+  cf <- asks envClassFile
+  let n = cf.minorVersion
+  return $ PP.text "minor version: " <> PP.integer (fromIntegral n)
 
-ppMajorVersion :: U2 -> Doc
-ppMajorVersion n = PP.text "minor version: " <> PP.integer (fromIntegral n)
+pprMajorVersion :: CPReader Doc
+pprMajorVersion = do
+  cf <- asks envClassFile
+  let n = cf.majorVersion
+  return $ PP.text "minor version: " <> PP.integer (fromIntegral n)
 
-ppThisClass :: CPIndex -> ConstUtf8 -> Doc
-ppThisClass idx (ConstUtf8 name) = PP.text "this_class: " <> ppRef idx <> ppComment name
-
-instance Pretty ConstantPoolInfo where
-  ppr _ = pprConstantPoolInfo
+pprThisClass :: CPReader Doc
+pprThisClass = do
+  cf <- asks envClassFile
+  let idx = cf.thisClass
+  ConstUtf8 name <- lift2 $ getClassName cf
+  return $ PP.text "this_class: " <> ppRef idx <> ppComment name
 
 pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
