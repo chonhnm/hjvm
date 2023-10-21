@@ -7,11 +7,18 @@ import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
 import Control.Monad.Trans.State (StateT, evalStateT, get, modify)
 import Data.Text qualified as T
-import Text.PrettyPrint (Doc, (<+>), (<>))
+import Text.PrettyPrint (Doc, (<+>), (<>), ($$))
 import Text.PrettyPrint qualified as PP
 import Text.Printf (printf)
 import Util (MyErr, U2, digitLength)
 import Prelude hiding ((<>))
+
+indentOfSubItem :: Int
+indentOfSubItem  = 2 
+indentOfRef :: Int
+indentOfRef = 25
+indentOfComment :: Int
+indentOfComment = 40
 
 type CPReader = ReaderT Env (StateT MyState MyErr)
 
@@ -49,9 +56,10 @@ pprClassFile = do
         pprMajorVersion,
         pprFlags,
         pprThisClass,
-        pprSuperClass
+        pprSuperClass,
+        pprIFMACounts
       ]
-  let classDoc = hang 2 subDoc
+  let classDoc = hang indentOfSubItem subDoc
   cpDoc <- pprConstantPoolInfo
   return $ PP.vcat [classDoc, cpDoc]
 
@@ -86,13 +94,23 @@ pprThisClass :: CPReader Doc
 pprThisClass = do
   cf <- asks envClassFile
   ConstUtf8 name <- lift2 $ getClassName cf
-  return $ PP.text "this_class: " <> ppRef cf.thisClass <> ppComment name
+  return $ PP.text "this_class: " <> ppRef cf.thisClass $$ ppComment name
 
 pprSuperClass :: CPReader Doc
 pprSuperClass = do
   cf <- asks envClassFile
   ConstUtf8 name <- lift2 $ getSuperClassName cf
-  return $ PP.text "super_class: " <> ppRef cf.superClass <> ppComment name
+  return $ PP.text "super_class: " <> ppRef cf.superClass $$ ppComment name
+
+pprIFMACounts :: CPReader Doc
+pprIFMACounts = do
+  cf <- asks envClassFile
+  let ic = PP.text "interfaces:" <+> PP.int (length cf.interfaces)
+  let fc = PP.text "fields:" <+> PP.int (length cf.fields)
+  let mc = PP.text "methods:" <+> PP.int (length cf.methods)
+  let ac = PP.text "attributes:" <+> PP.int (length cf.attributes)
+  let cnts = PP.punctuate PP.comma [ic, fc, mc, ac]
+  return $ PP.hsep cnts
 
 pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
@@ -156,7 +174,7 @@ ppRef :: U2 -> Doc
 ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
 
 ppComment :: T.Text -> Doc
-ppComment s = PP.text "     // " <> PP.text (T.unpack s)
+ppComment s = PP.nest indentOfComment $ PP.text "//" <+> PP.text (T.unpack s)
 
 instance Pretty ConstUtf8 where
   ppr (ConstUtf8 val) = return $ ppTag "Utf8" <> PP.text (T.unpack val)
