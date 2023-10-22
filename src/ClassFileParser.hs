@@ -26,9 +26,11 @@ data Env = Env
   }
 
 class ClassFileParser cf where
-  getClassName :: cf -> MyErr ConstUtf8
+  getThisClassName :: cf -> MyErr ConstUtf8
   getSuperClassName :: cf -> MyErr ConstUtf8
   getBootstapMethods :: cf -> [BootstrapMethod]
+  getClassName :: cf -> U2 -> MyErr ConstUtf8
+  getUtf8Name :: cf -> U2 -> MyErr ConstUtf8
 
 instance ClassFileParser ClassFile where
   getBootstapMethods cf =
@@ -39,14 +41,15 @@ instance ClassFileParser ClassFile where
       bt [] (BootstrapMethods xs) = xs
       bt [] _ = []
       bt val _ = val
-  getClassName cf = do
+  getClassName cf idx = do
     let cp = cf.constantPool
-    ConstClass nidx <- cpConstClass cp cf.thisClass
+    ConstClass nidx <- cpConstClass cp idx
     cpConstUtf8 cp nidx
-  getSuperClassName cf = do
+  getThisClassName cf = getClassName cf cf.thisClass
+  getSuperClassName cf = getClassName cf cf.superClass
+  getUtf8Name cf idx = do 
     let cp = cf.constantPool
-    ConstClass nidx <- cpConstClass cp cf.superClass
-    cpConstUtf8 cp nidx
+    cpConstUtf8 cp idx 
 
 class CPInfoChecker a where
   checkCPInfo :: a -> CPReader ()

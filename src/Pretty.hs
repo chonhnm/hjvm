@@ -2,23 +2,25 @@ module Pretty (ppClassFile) where
 
 import AccessFlags (IAccessFlags (encodeFlags, encodeHex))
 import ClassFile
-import ClassFileParser (ClassFileParser (getClassName, getSuperClassName))
+import ClassFileParser (ClassFileParser (getClassName, getSuperClassName, getThisClassName, getUtf8Name))
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
 import Control.Monad.Trans.State (StateT, evalStateT, get, modify)
 import Data.Text qualified as T
-import Text.PrettyPrint (Doc, (<+>), (<>), ($$))
+import Text.PrettyPrint (Doc, ($$), (<+>), (<>))
 import Text.PrettyPrint qualified as PP
 import Text.Printf (printf)
 import Util (MyErr, U2, digitLength)
 import Prelude hiding ((<>))
 
 indentOfSubItem :: Int
-indentOfSubItem  = 2 
+indentOfSubItem = 2
+
 indentOfRef :: Int
 indentOfRef = 19
+
 indentOfComment :: Int
-indentOfComment = 40
+indentOfComment = 15
 
 type CPReader = ReaderT Env (StateT MyState MyErr)
 
@@ -66,7 +68,7 @@ pprClassFile = do
 pprClassTitle :: CPReader Doc
 pprClassTitle = do
   cf <- asks envClassFile
-  ConstUtf8 name <- lift2 $ getClassName cf
+  ConstUtf8 name <- lift2 $ getThisClassName cf
   return $ PP.text "public class" <+> PP.text (T.unpack name)
 
 pprMinorVersion :: CPReader Doc
@@ -93,8 +95,9 @@ pprFlags = do
 pprThisClass :: CPReader Doc
 pprThisClass = do
   cf <- asks envClassFile
-  ConstUtf8 name <- lift2 $ getClassName cf
-  return $ PP.text "this_class: " <> ppRef cf.thisClass $$ ppComment name
+  let idx = cf.thisClass
+  ConstUtf8 name <- lift2 $ getClassName cf idx
+  return $ PP.text "this_class: " <> ppRef idx $$ ppComment name
 
 pprSuperClass :: CPReader Doc
 pprSuperClass = do
@@ -168,7 +171,7 @@ ppIndex = do
   return $ PP.text val
 
 ppTag :: String -> Doc -> Doc
-ppTag str doc = PP.text str $$ PP.nest indentOfRef doc  
+ppTag str doc = PP.text str $$ PP.nest indentOfRef doc
 
 ppRef :: U2 -> Doc
 ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
@@ -192,49 +195,61 @@ instance Pretty ConstDouble where
   ppr (ConstDouble val) = return $ ppTag "Double" $ PP.double val
 
 instance Pretty ConstClass where
-  ppr (ConstClass val) = return $ ppTag "Class" $ ppRef val
+  ppr (ConstClass nIdx) = do
+    cf <- asks envClassFile
+    ConstUtf8 name <- lift2 $ getUtf8Name cf nIdx
+    return $ ppTag "Class" $ ppRef nIdx $$ ppComment name
 
 instance Pretty ConstString where
   ppr (ConstString val) = return $ ppTag "String" $ ppRef val
 
 instance Pretty ConstFieldref where
-  ppr (ConstFieldref cIdx ntIdx) =
+  ppr (ConstFieldref cIdx ntIdx) = do
+    ConstUtf8 name <- getFieldOrMethodRefName cIdx ntIdx
     return $
-      ppTag "Fieldref"
-        $ ppRef cIdx
-        <> PP.char '.'
-        <> ppRef ntIdx
+      ppTag "Fieldref" $
+        ppRef cIdx
+          <> PP.char '.'
+          <> ppRef ntIdx
+          $$ ppComment name
 
 instance Pretty ConstMethodref where
-  ppr (ConstMethodref cIdx ntIdx) =
+  ppr (ConstMethodref cIdx ntIdx) = do
+    ConstUtf8 name <- getFieldOrMethodRefName cIdx ntIdx
     return $
-      ppTag "Methodref"
-        $ ppRef cIdx
-        <> PP.char '.'
-        <> ppRef ntIdx
+      ppTag "Methodref" $
+        ppRef cIdx
+          <> PP.char '.'
+          <> ppRef ntIdx
+          $$ ppComment name
 
 instance Pretty ConstInterfaceMethodref where
-  ppr (ConstInterfaceMethodref cIdx ntIdx) =
+  ppr (ConstInterfaceMethodref cIdx ntIdx) = do
+    ConstUtf8 name <- getFieldOrMethodRefName cIdx ntIdx
     return $
-      ppTag "InterfaceMethodref"
-        $ ppRef cIdx
-        <> PP.char '.'
-        <> ppRef ntIdx
+      ppTag "InterfaceMethodref" $
+        ppRef cIdx
+          <> PP.char '.'
+          <> ppRef ntIdx
+          $$ ppComment name
 
 instance Pretty ConstNameAndType where
-  ppr (ConstNameAndType nIdx dIdx) =
+  ppr (ConstNameAndType nIdx dIdx) = do
+    cf <- asks envClassFile
+    ConstUtf8 name <- lift2 $ getNameAndTypeUnwraped cf nIdx dIdx
     return $
-      ppTag "NameAndType"
-        $ ppRef nIdx
-        <> PP.char ':'
-        <> ppRef dIdx
+      ppTag "NameAndType" $
+        ppRef nIdx
+          <> PP.char ':'
+          <> ppRef dIdx
+          $$ ppComment name
 
 instance Pretty ConstMethodHandle where
   ppr (ConstMethodHandle kind idx) =
     return $
-      ppTag "MethodHandle"
-        $ PP.text (show kind)
-        <+> ppRef idx
+      ppTag "MethodHandle" $
+        PP.text (show kind)
+          <+> ppRef idx
 
 instance Pretty ConstMethodType where
   ppr (ConstMethodType dIdx) = return $ ppTag "MethodType" $ ppRef dIdx
@@ -242,21 +257,41 @@ instance Pretty ConstMethodType where
 instance Pretty ConstDynamic where
   ppr (ConstDynamic attrIdx ntIdx) =
     return $
-      ppTag "Dynamic"
-        $ PP.text "attr"
-        <> ppRef attrIdx
-        <+> ppRef ntIdx
+      ppTag "Dynamic" $
+        PP.text "attr"
+          <> ppRef attrIdx
+          <+> ppRef ntIdx
 
 instance Pretty ConstInvokeDynamic where
   ppr (ConstInvokeDynamic attrIdx ntIdx) =
     return $
-      ppTag "InvokeDynamic"
-        $ PP.text "attr"
-        <> ppRef attrIdx
-        <+> ppRef ntIdx
+      ppTag "InvokeDynamic" $
+        PP.text "attr"
+          <> ppRef attrIdx
+          <+> ppRef ntIdx
 
 instance Pretty ConstModule where
   ppr (ConstModule nIdx) = return $ ppTag "Module" $ ppRef nIdx
 
 instance Pretty ConstPackage where
   ppr (ConstPackage nIdx) = return $ ppTag "Package" $ ppRef nIdx
+
+getNameAndType :: ClassFile -> U2 -> MyErr ConstUtf8
+getNameAndType cf idx = do
+  let cp = cf.constantPool
+  (ConstNameAndType nIdx dIdx) <- cpConstNameAndType cp idx
+  getNameAndTypeUnwraped cf nIdx dIdx
+
+getNameAndTypeUnwraped :: ClassFile -> U2 -> U2 -> MyErr ConstUtf8
+getNameAndTypeUnwraped cf nameIdx descIdx = do
+  ConstUtf8 name <- getUtf8Name cf nameIdx
+  ConstUtf8 dname <- getUtf8Name cf descIdx
+  return $ ConstUtf8 $ name `T.append` ":" `T.append` dname
+
+getFieldOrMethodRefName :: U2 -> U2 -> CPReader ConstUtf8
+getFieldOrMethodRefName cIdx ntIdx = do
+  cf <- asks envClassFile
+  ConstUtf8 cname <- lift2 $ getClassName cf cIdx
+  ConstUtf8 ntname <- lift2 $ getNameAndType cf ntIdx
+  let mrname = cname `T.append` "." `T.append` ntname
+  return $ ConstUtf8 mrname
