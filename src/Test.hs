@@ -1,11 +1,18 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
+{-# LANGUAGE ExplicitNamespaces #-}
 
 module Test where
 
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader
 import qualified Data.Text as T 
+import Data.Kind (Type)
+import ClassFile (ConstUtf8 (ConstUtf8), ConstInteger (ConstInteger), CPTag (JVM_Constant_Utf8, JVM_Constant_Integer))
+import Data.Typeable (cast, Typeable, type (:~:) (Refl), eqT)
+
 
 
 parseReader :: IO ()
@@ -50,3 +57,67 @@ parseEmail = do
   lift $ putStrLn "email: " >> print env
   case env of
     Profile n a _ -> return $ n ++ show a ++ "@qq.com"
+
+data HList (ts ::[Type]) where 
+  HNil :: HList '[]
+  (:#) :: t -> HList ts -> HList (t ': ts)
+infixr 5 :#  
+
+hLength :: HList ts -> Int 
+hLength HNil = 0 
+hLength (_ :# ts) = 1 + hLength ts 
+
+hhead :: HList (t ': ts) -> t   
+hhead (x :# _) = x 
+
+htail :: HList (t ': ts) -> HList ts 
+htail (_ :# xs) = xs 
+
+myList = Just "Hello" :# True :# HNil
+
+applyToFive :: (forall a. a -> a) -> Int 
+applyToFive f = f 5 
+
+
+-- data CP2 a where 
+--   ConUtf8 :: ConstUtf8 -> CP2 ConstUtf8
+--   ConInteger :: ConstInteger -> CP2 ConstInteger
+
+class (Typeable a) => CPEntry a where 
+  cpEntryTag :: a -> CPTag 
+instance CPEntry ConstUtf8 where 
+  cpEntryTag _ = JVM_Constant_Utf8
+instance CPEntry ConstInteger where
+  cpEntryTag _ = JVM_Constant_Integer
+
+data CPInf = CPInf CPTag CPAny
+type CPool = [CPInf]
+
+getU8FromCPool :: CPool -> Int -> Maybe ConstUtf8
+getU8FromCPool pool n = let (CPInf _ cpany) = pool !! n in 
+  fromCPAny cpany
+
+data CPAny where 
+  CPAny ::CPEntry a => a -> CPAny 
+
+elimCPAny :: (forall a. CPEntry a => a -> r) -> CPAny -> r 
+elimCPAny f (CPAny a) = f a 
+
+fromCPAny :: CPEntry a => CPAny -> Maybe a 
+fromCPAny = elimCPAny cast 
+
+castMyCPEntry :: forall a b. (Typeable a, Typeable b) => a -> Maybe b 
+castMyCPEntry x  = case eqT :: Maybe(a :~: b) of 
+    Nothing -> Nothing
+    Just Refl ->Just  x 
+
+cpAny1 :: CPAny
+cpAny1 = CPAny $ ConstUtf8 "123"
+cpAny2 :: CPAny
+cpAny2 =  CPAny $ ConstInteger 12
+
+getU8 :: Maybe ConstUtf8
+getU8 = fromCPAny cpAny1
+
+getInteger :: Maybe ConstInteger
+getInteger = fromCPAny cpAny1
