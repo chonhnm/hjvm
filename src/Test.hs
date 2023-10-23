@@ -73,21 +73,22 @@ hhead (x :# _) = x
 htail :: HList (t ': ts) -> HList ts 
 htail (_ :# xs) = xs 
 
-myList = Just "Hello" :# True :# HNil
+myList = Just 123 :# True :# HNil
 
 applyToFive :: (forall a. a -> a) -> Int 
 applyToFive f = f 5 
 
+----------- CPENTRY------
 
--- data CP2 a where 
---   ConUtf8 :: ConstUtf8 -> CP2 ConstUtf8
---   ConInteger :: ConstInteger -> CP2 ConstInteger
+data CPEntry a where 
+  ConUtf8 :: ConstUtf8 -> CPEntry ConstUtf8
+  ConInteger :: ConstInteger -> CPEntry ConstInteger
 
-class (Typeable a) => CPEntry a where 
+class (Typeable a) => ICPEntry a where 
   cpEntryTag :: a -> CPTag 
-instance CPEntry ConstUtf8 where 
+instance ICPEntry ConstUtf8 where 
   cpEntryTag _ = JVM_Constant_Utf8
-instance CPEntry ConstInteger where
+instance ICPEntry ConstInteger where
   cpEntryTag _ = JVM_Constant_Integer
 
 data CPInf = CPInf CPTag CPAny
@@ -98,12 +99,12 @@ getU8FromCPool pool n = let (CPInf _ cpany) = pool !! n in
   fromCPAny cpany
 
 data CPAny where 
-  CPAny ::CPEntry a => a -> CPAny 
+  CPAny ::ICPEntry a => a -> CPAny 
 
-elimCPAny :: (forall a. CPEntry a => a -> r) -> CPAny -> r 
+elimCPAny :: (forall a. ICPEntry a => a -> r) -> CPAny -> r 
 elimCPAny f (CPAny a) = f a 
 
-fromCPAny :: CPEntry a => CPAny -> Maybe a 
+fromCPAny :: ICPEntry a => CPAny -> Maybe a 
 fromCPAny = elimCPAny cast 
 
 castMyCPEntry :: forall a b. (Typeable a, Typeable b) => a -> Maybe b 
@@ -121,3 +122,8 @@ getU8 = fromCPAny cpAny1
 
 getInteger :: Maybe ConstInteger
 getInteger = fromCPAny cpAny1
+
+
+
+matchAny :: CPAny -> CPTag
+matchAny  = elimCPAny cpEntryTag 
