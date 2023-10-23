@@ -107,11 +107,11 @@ getU8FromCPool pool n = let (CPInf _ cpany) = pool !! n in
 
 data CPAny = forall a. (ICPEntry a) => CPAny (CPEntry a)
 
-elimCPAny :: (forall a. ICPEntry a =>CPEntry a -> r) -> CPAny -> r 
-elimCPAny f (CPAny a) = f a 
+elimCPAny :: (forall a. ICPEntry a => a -> r) -> CPAny -> r 
+elimCPAny f (CPAny a) = f (unwrapCPEntry a)
 
 fromCPAny :: ICPEntry a => CPAny -> Maybe a 
-fromCPAny = elimCPAny (cast . unwrapCPEntry)
+fromCPAny = elimCPAny cast 
 
 castMyCPEntry :: forall a b. (Typeable a, Typeable b) => a -> Maybe b 
 castMyCPEntry x  = case eqT :: Maybe(a :~: b) of 
@@ -130,7 +130,7 @@ getInteger :: Maybe ConstInteger
 getInteger = fromCPAny cpAny1
 
 matchAny :: CPAny -> CPTag
-matchAny  = elimCPAny (cpEntryTag . unwrapCPEntry)
+matchAny  = elimCPAny cpEntryTag
 
 
 patternMatchAny :: CPAny -> String 
