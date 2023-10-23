@@ -84,6 +84,10 @@ data CPEntry a where
   ConUtf8 :: ConstUtf8 -> CPEntry ConstUtf8
   ConInteger :: ConstInteger -> CPEntry ConstInteger
 
+unwrapCPEntry :: CPEntry a -> a 
+unwrapCPEntry (ConUtf8 a) = a 
+unwrapCPEntry (ConInteger a) = a 
+
 class (Typeable a) => ICPEntry a where 
   cpEntryTag :: a -> CPTag 
 instance ICPEntry ConstUtf8 where 
@@ -98,14 +102,16 @@ getU8FromCPool :: CPool -> Int -> Maybe ConstUtf8
 getU8FromCPool pool n = let (CPInf _ cpany) = pool !! n in 
   fromCPAny cpany
 
-data CPAny where 
-  CPAny ::ICPEntry a => a -> CPAny 
+-- data CPAny where 
+--   CPAny ::ICPEntry a =>CPEntry a -> CPAny 
 
-elimCPAny :: (forall a. ICPEntry a => a -> r) -> CPAny -> r 
+data CPAny = forall a. (ICPEntry a) => CPAny (CPEntry a)
+
+elimCPAny :: (forall a. ICPEntry a =>CPEntry a -> r) -> CPAny -> r 
 elimCPAny f (CPAny a) = f a 
 
 fromCPAny :: ICPEntry a => CPAny -> Maybe a 
-fromCPAny = elimCPAny cast 
+fromCPAny = elimCPAny (cast . unwrapCPEntry)
 
 castMyCPEntry :: forall a b. (Typeable a, Typeable b) => a -> Maybe b 
 castMyCPEntry x  = case eqT :: Maybe(a :~: b) of 
@@ -113,9 +119,9 @@ castMyCPEntry x  = case eqT :: Maybe(a :~: b) of
     Just Refl ->Just  x 
 
 cpAny1 :: CPAny
-cpAny1 = CPAny $ ConstUtf8 "123"
+cpAny1 = CPAny $ ConUtf8 $ ConstUtf8 "123"
 cpAny2 :: CPAny
-cpAny2 =  CPAny $ ConstInteger 12
+cpAny2 =  CPAny $ ConInteger $ ConstInteger 12
 
 getU8 :: Maybe ConstUtf8
 getU8 = fromCPAny cpAny1
@@ -123,7 +129,10 @@ getU8 = fromCPAny cpAny1
 getInteger :: Maybe ConstInteger
 getInteger = fromCPAny cpAny1
 
-
-
 matchAny :: CPAny -> CPTag
-matchAny  = elimCPAny cpEntryTag 
+matchAny  = elimCPAny (cpEntryTag . unwrapCPEntry)
+
+
+patternMatchAny :: CPAny -> String 
+patternMatchAny (CPAny (ConUtf8 a)) = "U8: " ++ show a 
+patternMatchAny (CPAny (ConInteger a)) = "Int: " ++ show a 
