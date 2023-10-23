@@ -119,14 +119,14 @@ pprConstantPoolInfo :: CPReader Doc
 pprConstantPoolInfo = do
   cp <- asks envConstPool
   let title = PP.text "Constant pool:"
-  infosDoc <- mapM ppr $ cpInfos cp
+  infosDoc <- mapM ppr $ cpEntries cp
   let cpDoc = hang indentOfSubItem (title : infosDoc)
   return cpDoc
 
-instance Pretty CPInfo where
+instance Pretty CPEntry where
   ppr = pprCPInfoWrap
 
-pprCPInfoWrap :: CPInfo -> CPReader Doc
+pprCPInfoWrap :: CPEntry -> CPReader Doc
 pprCPInfoWrap info = do
   val <- pprCPInfo info
   idx <-
@@ -136,7 +136,7 @@ pprCPInfoWrap info = do
   incCPIdx
   return $ idx <+> val
 
-pprCPInfo :: CPInfo -> CPReader Doc
+pprCPInfo :: CPEntry -> CPReader Doc
 pprCPInfo Constant_Invalid = return PP.empty
 pprCPInfo (Constant_Utf8 x) = ppr x
 pprCPInfo (Constant_Integer x) = ppr x
@@ -178,6 +178,9 @@ ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
 
 ppComment :: T.Text -> Doc
 ppComment s = PP.nest indentOfComment $ PP.text "//" <+> PP.text (T.unpack s)
+
+instance Pretty () where 
+  ppr _ = return PP.empty
 
 instance Pretty ConstUtf8 where
   ppr (ConstUtf8 val) = return $ ppTag "Utf8" $ PP.text (T.unpack val)
@@ -279,7 +282,7 @@ instance Pretty ConstPackage where
 getNameAndType :: ClassFile -> U2 -> MyErr ConstUtf8
 getNameAndType cf idx = do
   let cp = cf.constantPool
-  (ConstNameAndType nIdx dIdx) <- cpConstNameAndType cp idx
+  (ConstNameAndType nIdx dIdx) <- cpEntry cp idx
   getNameAndTypeUnwraped cf nIdx dIdx
 
 getNameAndTypeUnwraped :: ClassFile -> U2 -> U2 -> MyErr ConstUtf8

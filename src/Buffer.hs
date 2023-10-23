@@ -59,7 +59,7 @@ parseConstantPoolInfo = do
   xss <- withReaderT cpMajorVersion $ parseCPInfos (cnt - 1)
   let (tag, info) = unzip $ concat xss
   cp <- ask
-  return cp {cpTags = JVM_Constant_Invalid : tag, cpInfos = Constant_Invalid : info}
+  return cp {cpTags = JVM_Constant_Invalid : tag, cpEntries = Constant_Invalid : info}
 
 parseCPInfos :: U2 -> MajorVersionReader [[CPTI]]
 parseCPInfos n
@@ -70,7 +70,7 @@ parseCPInfos n
       xss <- parseCPInfos (n - fromIntegral (length xs))
       return $ xs : xss
 
-type CPTI = (CPTag, CPInfo)
+type CPTI = (CPTag, CPEntry)
 
 parseCPInfo :: MajorVersionReader [CPTI]
 parseCPInfo = do
@@ -668,7 +668,7 @@ parseAttributeInfo = do
   cp <- asks constantPool
   attrNameIdx <- lift getWord16be
   len <- lift getWord32be
-  let maybeAttrTag = cpConstUtf8 cp attrNameIdx
+  let maybeAttrTag = cpEntry cp attrNameIdx
   case maybeAttrTag of
     Left err -> error $ show err
     Right (ConstUtf8 attrTag) -> do

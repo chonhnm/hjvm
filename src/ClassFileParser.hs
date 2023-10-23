@@ -43,21 +43,21 @@ instance ClassFileParser ClassFile where
       bt val _ = val
   getClassName cf idx = do
     let cp = cf.constantPool
-    ConstClass nidx <- cpConstClass cp idx
-    cpConstUtf8 cp nidx
+    ConstClass nidx <- cpEntry cp idx
+    cpEntry cp nidx
   getThisClassName cf = getClassName cf cf.thisClass
   getSuperClassName cf = getClassName cf cf.superClass
   getUtf8Name cf idx = do 
     let cp = cf.constantPool
-    cpConstUtf8 cp idx 
+    cpEntry cp idx 
 
 class CPInfoChecker a where
   checkCPInfo :: a -> CPReader ()
 
-instance CPInfoChecker CPInfo where
+instance CPInfoChecker CPEntry where
   checkCPInfo = checkCPInfo_
 
-checkCPInfo_ :: CPInfo -> CPReader ()
+checkCPInfo_ :: CPEntry -> CPReader ()
 checkCPInfo_ (Constant_Utf8 _) = return ()
 checkCPInfo_ (Constant_Integer _) = return ()
 checkCPInfo_ (Constant_Float _) = return ()
@@ -175,7 +175,7 @@ checkConstantPoolInfo cf =
   do
     let cp = constantPool cf
     let tags = cpTags cp
-    let infos = cpInfos cp
+    let infos = cpEntries cp
     let cnt = cpCount cp
     when (length tags /= fromIntegral cnt || length tags /= length infos) $
       classFormatErr "Unexpected fatal error."
@@ -184,7 +184,7 @@ checkConstantPoolInfo cf =
       classFormatErr "Constant pool entry at zero is not invalid."
     runReaderT (doCheckCPInfo infos) (Env cf cp 0)
 
-doCheckCPInfo :: [CPInfo] -> CPReader ()
+doCheckCPInfo :: [CPEntry] -> CPReader ()
 doCheckCPInfo [] = return ()
 doCheckCPInfo (x : xs) = do
   checkCPInfo x
@@ -216,18 +216,18 @@ checkConstantInvalid idx = do
 checkConstantUtf8 :: U2 -> CPReader ConstUtf8
 checkConstantUtf8 idx = do
   cp <- asks envPool
-  lift $ cpConstUtf8 cp idx
+  lift $ cpEntry cp idx
 
 checkConstantClass :: U2 -> CPReader ConstUtf8
 checkConstantClass idx = do
   cp <- asks envPool
-  ConstClass nidx <- lift $ cpConstClass cp idx
+  ConstClass nidx <- lift $ cpEntry cp idx
   utf8Checker verifyLegalClassName nidx
 
 checkConstantMethodref :: U2 -> CPReader ConstMethodref
 checkConstantMethodref idx = do
   cp <- asks envPool
-  lift $ cpConstMethodref cp idx
+  lift $ cpEntry cp idx
 
 checkConstantMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantMethodref_name idx = do
@@ -238,7 +238,7 @@ checkConstantMethodref_name idx = do
 checkConstantInterfaceMethodref :: U2 -> CPReader ConstInterfaceMethodref
 checkConstantInterfaceMethodref idx = do
   cp <- asks envPool
-  lift $ cpConstInterfaceMethodref cp idx
+  lift $ cpEntry cp idx
 
 checkConstantInterfaceMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantInterfaceMethodref_name idx = do
@@ -249,7 +249,7 @@ checkConstantInterfaceMethodref_name idx = do
 checkConstantNameAndType :: U2 -> CPReader ConstNameAndType
 checkConstantNameAndType idx = do
   cp <- asks envPool
-  r@(ConstNameAndType nIdx dIdx) <- lift $ cpConstNameAndType cp idx
+  r@(ConstNameAndType nIdx dIdx) <- lift $ cpEntry cp idx
   _ <- checkConstantUtf8 nIdx
   _ <- checkConstantUtf8 dIdx
   return r
@@ -257,7 +257,7 @@ checkConstantNameAndType idx = do
 utf8Checker :: (Text -> MyErr Text) -> U2 -> CPReader ConstUtf8
 utf8Checker checker idx = do
   cp <- asks envPool
-  r@(ConstUtf8 name) <- lift $ cpConstUtf8 cp idx
+  r@(ConstUtf8 name) <- lift $ cpEntry cp idx
   _ <- lift $ checker name
   return r
 

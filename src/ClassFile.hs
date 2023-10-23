@@ -20,7 +20,7 @@ data ConstantPoolInfo = ConstantPoolInfo
   { cpMajorVersion :: U2,
     cpCount :: U2,
     cpTags :: [CPTag],
-    cpInfos :: [CPInfo]
+    cpEntries :: [CPEntry]
   }
   deriving (Show)
 
@@ -31,7 +31,7 @@ type AttrIndex = U2
 
 type CPIndex = U2
 
-data CPInfo
+data CPEntry
   = Constant_Invalid
   | Constant_Utf8 ConstUtf8
   | Constant_Integer ConstInteger
@@ -436,27 +436,10 @@ javaVersion version =
 class ConstantPool cp where
   cpCheckIndex :: cp -> U2 -> MyErr ()
   cpCheckTag :: CPTag -> cp -> U2 -> MyErr ()
-  cpElement :: cp -> U2 -> MyErr CPInfo
+  cpElement :: cp -> U2 -> MyErr CPEntry
   cpTag :: cp -> U2 -> MyErr CPTag
-
-  cpConstInvalid :: cp -> U2 -> MyErr ()
-  cpConstUtf8 :: cp -> U2 -> MyErr ConstUtf8
-  cpConstInteger :: cp -> U2 -> MyErr ConstInteger
-  cpConstFloat :: cp -> U2 -> MyErr ConstFloat
-  cpConstLong :: cp -> U2 -> MyErr ConstLong
-  cpConstDouble :: cp -> U2 -> MyErr ConstDouble
-  cpConstClass :: cp -> U2 -> MyErr ConstClass
-  cpConstString :: cp -> U2 -> MyErr ConstString
-  cpConstFieldref :: cp -> U2 -> MyErr ConstFieldref
-  cpConstMethodref :: cp -> U2 -> MyErr ConstMethodref
-  cpConstInterfaceMethodref :: cp -> U2 -> MyErr ConstInterfaceMethodref
-  cpConstNameAndType :: cp -> U2 -> MyErr ConstNameAndType
-  cpConstMethodHandle :: cp -> U2 -> MyErr ConstMethodHandle
-  cpConstMethodType :: cp -> U2 -> MyErr ConstMethodType
-  cpConstDynamic :: cp -> U2 -> MyErr ConstDynamic
-  cpConstInvokeDynamic :: cp -> U2 -> MyErr ConstInvokeDynamic
-  cpConstModule :: cp -> U2 -> MyErr ConstModule
-  cpConstPackage :: cp -> U2 -> MyErr ConstPackage
+  cpEntry :: (Typeable a) => cp -> U2 -> MyErr a
+  
 
 instance ConstantPool ConstantPoolInfo where
   cpCheckIndex :: ConstantPoolInfo -> U2 -> MyErr ()
@@ -467,7 +450,7 @@ instance ConstantPool ConstantPoolInfo where
       else Left $ PE $ PoolOutOfBoundsException $ printf "Index: %d, constant pool count: %d." n count
   cpElement cp n = do
     cpCheckIndex cp n
-    return $ cpInfos cp !! fromIntegral n
+    return $ cpEntries cp !! fromIntegral n
   cpTag cp n = do
     cpCheckIndex cp n
     return $ cpTags cp !! fromIntegral n
@@ -478,35 +461,13 @@ instance ConstantPool ConstantPoolInfo where
       Left $
         ClassFormatError $
           printf "Expected: %s, Actual: %s" (show tag) (show atag)
-  cpConstInvalid = cpType JVM_Constant_Invalid
-  cpConstUtf8 = cpType JVM_Constant_Utf8
-  cpConstInteger = cpType JVM_Constant_Integer
-  cpConstFloat = cpType JVM_Constant_Float
-  cpConstLong = cpType JVM_Constant_Long
-  cpConstDouble = cpType JVM_Constant_Double
-  cpConstClass = cpType JVM_Constant_Class
-  cpConstString = cpType JVM_Constant_String
-  cpConstFieldref = cpType JVM_Constant_Fieldref
-  cpConstMethodref = cpType JVM_Constant_Methodref
-  cpConstInterfaceMethodref = cpType JVM_Constant_InterfaceMethodref
-  cpConstNameAndType = cpType JVM_Constant_NameAndType
-  cpConstMethodHandle = cpType JVM_Constant_MethodHandle
-  cpConstMethodType = cpType JVM_Constant_MethodType
-  cpConstDynamic = cpType JVM_Constant_Dynamic
-  cpConstInvokeDynamic = cpType JVM_Constant_InvokeDynamic
-  cpConstModule = cpType JVM_Constant_Module
-  cpConstPackage = cpType JVM_Constant_Package
+  cpEntry = cpType 
 
-data Hello = Hello | Hi | Hii Int
-
-jjj :: CPTag -> ConstantPoolInfo -> U2 -> MyErr Hello
-jjj = cpType
-
-cpType :: (Typeable a) => CPTag -> ConstantPoolInfo -> U2 -> MyErr a
-cpType tag cp idx = do
+cpType :: (Typeable a) =>ConstantPoolInfo -> U2 -> MyErr a
+cpType cp idx = do
   dyn <- cpDynamic cp idx
   case fromDynamic dyn of
-    Nothing -> unmatchedErr tag dyn idx
+    Nothing -> unmatchedErr dyn idx
     Just x -> return x
 
 cpDynamic :: ConstantPoolInfo -> U2 -> MyErr Dynamic
@@ -532,13 +493,12 @@ cpDynamic cp idx = do
     Constant_Module x -> Right $ toDyn x
     Constant_Package x -> Right $ toDyn x
 
-unmatchedErr :: CPTag -> Dynamic -> U2 -> MyErr a
-unmatchedErr tag actual idx =
+unmatchedErr :: Dynamic -> U2 -> MyErr a
+unmatchedErr actual idx =
   Left $
     PE $
       PoolUnmatchedType $
         printf
-          "Expected: %s, Actual: %s, Index: %d"
-          (show tag)
+          "Unmatched Constant Pool Entry. Actual: %s, Index: %d"
           (show actual)
           idx
