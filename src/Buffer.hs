@@ -5,6 +5,7 @@ module Buffer where
 import ClassFile
 import ClassFileChecker (checkAttrLength)
 import ClassFileParser (checkConstantPoolInfo)
+import ConstantPool
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local, withReaderT)
@@ -18,8 +19,8 @@ import Data.List (singleton)
 import Data.Text qualified as T
 import GHC.Base (assert)
 import Numeric (showHex)
-import Util
 import Pretty (ppClassFile)
+import Util
 
 parseMagic :: Get U4
 parseMagic = do

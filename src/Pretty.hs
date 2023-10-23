@@ -3,6 +3,7 @@ module Pretty (ppClassFile) where
 import AccessFlags (IAccessFlags (encodeFlags, encodeHex))
 import ClassFile
 import ClassFileParser (ClassFileParser (getClassName, getSuperClassName, getThisClassName, getUtf8Name))
+import ConstantPool
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
 import Control.Monad.Trans.State (StateT, evalStateT, get, modify)
@@ -179,7 +180,7 @@ ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
 ppComment :: T.Text -> Doc
 ppComment s = PP.nest indentOfComment $ PP.text "//" <+> PP.text (T.unpack s)
 
-instance Pretty () where 
+instance Pretty () where
   ppr _ = return PP.empty
 
 instance Pretty ConstUtf8 where

@@ -7,7 +7,7 @@
 
 module Test where
 
-import ClassFile (CPTag (JVM_Constant_Integer, JVM_Constant_Utf8), ConstInteger (ConstInteger), ConstUtf8 (ConstUtf8))
+import ConstantPool
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader
 import Data.Kind (Type)

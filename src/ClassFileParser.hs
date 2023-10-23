@@ -5,6 +5,7 @@ module ClassFileParser where
 
 import AccessFlags (IAccessFlags (is_module))
 import ClassFile
+import ConstantPool
 import Control.Monad (unless, when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks, local)
@@ -47,9 +48,9 @@ instance ClassFileParser ClassFile where
     cpEntry cp nidx
   getThisClassName cf = getClassName cf cf.thisClass
   getSuperClassName cf = getClassName cf cf.superClass
-  getUtf8Name cf idx = do 
+  getUtf8Name cf idx = do
     let cp = cf.constantPool
-    cpEntry cp idx 
+    cpEntry cp idx
 
 class CPInfoChecker a where
   checkCPInfo :: a -> CPReader ()

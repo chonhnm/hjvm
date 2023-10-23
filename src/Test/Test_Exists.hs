@@ -4,7 +4,7 @@
 
 module Test.Test_Exists where
 
-import ClassFile (CPTag (..), ConstInteger (ConstInteger), ConstUtf8 (ConstUtf8))
+import ConstantPool
 import Data.Typeable (Typeable, cast)
 
 class (Typeable a, HasCPEntryTag a) => HasCPEntry a
