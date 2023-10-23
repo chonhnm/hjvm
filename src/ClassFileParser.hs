@@ -169,7 +169,7 @@ checkCPInfo_ (Constant_Module (ConstModule idx)) = do
 checkCPInfo_ (Constant_Package (ConstPackage idx)) = do
   checkIsModule
   void $ checkPackageName idx
-checkCPInfo_ Constant_Invalid = return ()
+checkCPInfo_ (Constant_Invalid _)= return ()
 
 checkConstantPoolInfo :: ClassFile -> MyErr ()
 checkConstantPoolInfo cf =

@@ -60,7 +60,7 @@ parseConstantPoolInfo = do
   xss <- withReaderT cpMajorVersion $ parseCPInfos (cnt - 1)
   let (tag, info) = unzip $ concat xss
   cp <- ask
-  return cp {cpTags = JVM_Constant_Invalid : tag, cpEntries = Constant_Invalid : info}
+  return cp {cpTags = JVM_Constant_Invalid : tag, cpEntries = Constant_Invalid ConstInvalid : info}
 
 parseCPInfos :: U2 -> MajorVersionReader [[CPTI]]
 parseCPInfos n
@@ -82,10 +82,10 @@ parseCPInfo = do
     4 -> singleton . (JVM_Constant_Float,) . Constant_Float <$> lift parseConstantFloat
     5 -> do
       info <- Constant_Long <$> lift parseConstantLong
-      return [(JVM_Constant_Long, info), (JVM_Constant_Invalid, Constant_Invalid)]
+      return [(JVM_Constant_Long, info), (JVM_Constant_Invalid, Constant_Invalid ConstInvalid)]
     6 -> do
       info <- Constant_Double <$> lift parseConstantDouble
-      return [(JVM_Constant_Double, info), (JVM_Constant_Invalid, Constant_Invalid)]
+      return [(JVM_Constant_Double, info), (JVM_Constant_Invalid, Constant_Invalid ConstInvalid)]
     7 -> (singleton . (JVM_Constant_Class,)) . Constant_Class <$> lift parseConstantClass
     8 -> singleton . (JVM_Constant_String,) . Constant_String <$> lift parseConstantString
     9 -> singleton . (JVM_Constant_Fieldref,) . Constant_Fieldref <$> lift parseConstantFieldref

@@ -138,7 +138,7 @@ pprCPInfoWrap info = do
   return $ idx <+> val
 
 pprCPInfo :: CPEntry -> CPReader Doc
-pprCPInfo Constant_Invalid = return PP.empty
+pprCPInfo (Constant_Invalid x) = ppr x 
 pprCPInfo (Constant_Utf8 x) = ppr x
 pprCPInfo (Constant_Integer x) = ppr x
 pprCPInfo (Constant_Float x) = ppr x
@@ -180,7 +180,7 @@ ppRef idx = PP.text "#" <> PP.int (fromIntegral idx)
 ppComment :: T.Text -> Doc
 ppComment s = PP.nest indentOfComment $ PP.text "//" <+> PP.text (T.unpack s)
 
-instance Pretty () where
+instance Pretty ConstInvalid where
   ppr _ = return PP.empty
 
 instance Pretty ConstUtf8 where

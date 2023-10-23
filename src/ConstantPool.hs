@@ -23,7 +23,7 @@ emptyConstantPoolInfo :: ConstantPoolInfo
 emptyConstantPoolInfo = ConstantPoolInfo 0 0 [] []
 
 data CPEntry
-  = Constant_Invalid
+  = Constant_Invalid ConstInvalid
   | Constant_Utf8 ConstUtf8
   | Constant_Integer ConstInteger
   | Constant_Float ConstFloat
@@ -42,6 +42,8 @@ data CPEntry
   | Constant_Module ConstModule
   | Constant_Package ConstPackage
   deriving (Typeable, Show)
+
+data ConstInvalid = ConstInvalid deriving (Show)
 
 newtype ConstUtf8 = ConstUtf8 T.Text deriving (Show)
 
@@ -187,7 +189,7 @@ cpDynamic :: ConstantPoolInfo -> U2 -> MyErr Dynamic
 cpDynamic cp idx = do
   info <- cpElement cp idx
   case info of
-    Constant_Invalid -> Right $ toDyn ()
+    Constant_Invalid x -> Right $ toDyn x
     Constant_Utf8 x -> Right $ toDyn x
     Constant_Integer x -> Right $ toDyn x
     Constant_Float x -> Right $ toDyn x
