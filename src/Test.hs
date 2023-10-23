@@ -1,19 +1,18 @@
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeOperators #-}
 {-# OPTIONS_GHC -Wno-unused-do-bind #-}
-{-# LANGUAGE ExplicitNamespaces #-}
 
 module Test where
 
+import ClassFile (CPTag (JVM_Constant_Integer, JVM_Constant_Utf8), ConstInteger (ConstInteger), ConstUtf8 (ConstUtf8))
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader
-import qualified Data.Text as T 
 import Data.Kind (Type)
-import ClassFile (ConstUtf8 (ConstUtf8), ConstInteger (ConstInteger), CPTag (JVM_Constant_Utf8, JVM_Constant_Integer))
-import Data.Typeable (cast, Typeable, type (:~:) (Refl), eqT)
-
-
+import Data.Text qualified as T
+import Data.Typeable (Typeable, cast)
 
 parseReader :: IO ()
 parseReader = do
@@ -38,7 +37,7 @@ parseProfile = do
 parseName :: ReaderT Profile IO String
 parseName = do
   env <- ask
-  lift $ print ("name: "::T.Text) >> print env
+  lift $ print ("name: " :: T.Text) >> print env
   let n = "xiaobai"
   local (\p -> p {name = n}) parseAge
   lift $ putStrLn "exit name."
@@ -58,64 +57,64 @@ parseEmail = do
   case env of
     Profile n a _ -> return $ n ++ show a ++ "@qq.com"
 
-data HList (ts ::[Type]) where 
+data HList (ts :: [Type]) where
   HNil :: HList '[]
   (:#) :: t -> HList ts -> HList (t ': ts)
-infixr 5 :#  
 
-hLength :: HList ts -> Int 
-hLength HNil = 0 
-hLength (_ :# ts) = 1 + hLength ts 
+infixr 5 :#
 
-hhead :: HList (t ': ts) -> t   
-hhead (x :# _) = x 
+hLength :: HList ts -> Int
+hLength HNil = 0
+hLength (_ :# ts) = 1 + hLength ts
 
-htail :: HList (t ': ts) -> HList ts 
-htail (_ :# xs) = xs 
+hhead :: HList (t ': ts) -> t
+hhead (x :# _) = x
+
+htail :: HList (t ': ts) -> HList ts
+htail (_ :# xs) = xs
 
 myList = Just 123 :# True :# HNil
 
-applyToFive :: (forall a. a -> a) -> Int 
-applyToFive f = f 5 
+applyToFive :: (forall a. a -> a) -> Int
+applyToFive f = f 5
 
 ----------- CPENTRY------
 
-data CPEntry a where 
-  ConUtf8 :: ConstUtf8 -> CPEntry ConstUtf8
-  ConInteger :: ConstInteger -> CPEntry ConstInteger
+-- data CPEntry a where
+--   ConUtf8 :: ConstUtf8 -> CPEntry ConstUtf8
+--   ConInteger :: ConstInteger -> CPEntry ConstInteger
 
-class (Typeable a) => ICPEntry a where 
-  cpEntryTag :: a -> CPTag 
-instance ICPEntry ConstUtf8 where 
+class (Typeable a) => ICPEntry a where
+  cpEntryTag :: a -> CPTag
+
+instance ICPEntry ConstUtf8 where
   cpEntryTag _ = JVM_Constant_Utf8
+
 instance ICPEntry ConstInteger where
   cpEntryTag _ = JVM_Constant_Integer
 
 data CPInf = CPInf CPTag CPAny
+
 type CPool = [CPInf]
 
 getU8FromCPool :: CPool -> Int -> Maybe ConstUtf8
-getU8FromCPool pool n = let (CPInf _ cpany) = pool !! n in 
-  fromCPAny cpany
+getU8FromCPool pool n =
+  let (CPInf _ cpany) = pool !! n
+   in fromCPAny cpany
 
-data CPAny where 
-  CPAny ::ICPEntry a => a -> CPAny 
+data CPAny = forall a. (ICPEntry a) => CPAny a
 
-elimCPAny :: (forall a. ICPEntry a => a -> r) -> CPAny -> r 
-elimCPAny f (CPAny a) = f a 
+elimCPAny :: (forall a. (ICPEntry a) => a -> r) -> CPAny -> r
+elimCPAny f (CPAny a) = f a
 
-fromCPAny :: ICPEntry a => CPAny -> Maybe a 
-fromCPAny = elimCPAny cast 
-
-castMyCPEntry :: forall a b. (Typeable a, Typeable b) => a -> Maybe b 
-castMyCPEntry x  = case eqT :: Maybe(a :~: b) of 
-    Nothing -> Nothing
-    Just Refl ->Just  x 
+fromCPAny :: (ICPEntry a) => CPAny -> Maybe a
+fromCPAny = elimCPAny cast
 
 cpAny1 :: CPAny
 cpAny1 = CPAny $ ConstUtf8 "123"
+
 cpAny2 :: CPAny
-cpAny2 =  CPAny $ ConstInteger 12
+cpAny2 = CPAny $ ConstInteger 12
 
 getU8 :: Maybe ConstUtf8
 getU8 = fromCPAny cpAny1
@@ -123,7 +122,5 @@ getU8 = fromCPAny cpAny1
 getInteger :: Maybe ConstInteger
 getInteger = fromCPAny cpAny1
 
-
-
 matchAny :: CPAny -> CPTag
-matchAny  = elimCPAny cpEntryTag 
+matchAny = elimCPAny cpEntryTag
