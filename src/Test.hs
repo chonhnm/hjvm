@@ -10,8 +10,8 @@ import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Reader
 import qualified Data.Text as T 
 import Data.Kind (Type)
-import ClassFile (ConstUtf8 (ConstUtf8), ConstInteger (ConstInteger), CPTag (JVM_Constant_Utf8, JVM_Constant_Integer))
-import Data.Typeable (cast, Typeable, type (:~:) (Refl), eqT)
+import ConstantPool hiding (ICPEntry, CPEntry, unwrapCPEntry)
+import Data.Typeable (Typeable, cast)
 
 
 
@@ -58,23 +58,6 @@ parseEmail = do
   case env of
     Profile n a _ -> return $ n ++ show a ++ "@qq.com"
 
-data HList (ts ::[Type]) where 
-  HNil :: HList '[]
-  (:#) :: t -> HList ts -> HList (t ': ts)
-infixr 5 :#  
-
-hLength :: HList ts -> Int 
-hLength HNil = 0 
-hLength (_ :# ts) = 1 + hLength ts 
-
-hhead :: HList (t ': ts) -> t   
-hhead (x :# _) = x 
-
-htail :: HList (t ': ts) -> HList ts 
-htail (_ :# xs) = xs 
-
-myList = Just 123 :# True :# HNil
-
 applyToFive :: (forall a. a -> a) -> Int 
 applyToFive f = f 5 
 
@@ -89,13 +72,13 @@ unwrapCPEntry (ConUtf8 a) = a
 unwrapCPEntry (ConInteger a) = a 
 
 class (Typeable a) => ICPEntry a where 
-  cpEntryTag :: a -> CPTag 
+  cpEntryTag :: a -> CPEntryTag 
 instance ICPEntry ConstUtf8 where 
   cpEntryTag _ = JVM_Constant_Utf8
 instance ICPEntry ConstInteger where
   cpEntryTag _ = JVM_Constant_Integer
 
-data CPInf = CPInf CPTag CPAny
+data CPInf = CPInf CPEntryTag CPAny
 type CPool = [CPInf]
 
 getU8FromCPool :: CPool -> Int -> Maybe ConstUtf8
@@ -113,10 +96,6 @@ elimCPAny f (CPAny a) = f (unwrapCPEntry a)
 fromCPAny :: ICPEntry a => CPAny -> Maybe a 
 fromCPAny = elimCPAny cast 
 
-castMyCPEntry :: forall a b. (Typeable a, Typeable b) => a -> Maybe b 
-castMyCPEntry x  = case eqT :: Maybe(a :~: b) of 
-    Nothing -> Nothing
-    Just Refl ->Just  x 
 
 cpAny1 :: CPAny
 cpAny1 = CPAny $ ConUtf8 $ ConstUtf8 "123"
@@ -129,7 +108,7 @@ getU8 = fromCPAny cpAny1
 getInteger :: Maybe ConstInteger
 getInteger = fromCPAny cpAny1
 
-matchAny :: CPAny -> CPTag
+matchAny :: CPAny -> CPEntryTag
 matchAny  = elimCPAny cpEntryTag
 
 

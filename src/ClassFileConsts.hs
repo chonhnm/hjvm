@@ -14,6 +14,10 @@ type U4 = Word32
 
 type U8 = Word64
 
+type AttrIndex = U2
+
+type CPIndex = U2
+
 java_classfile_magic :: U4
 java_classfile_magic = 0xCAFEBABE
 

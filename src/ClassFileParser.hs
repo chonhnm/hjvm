@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-
+{-# LANGUAGE GADTs #-}
 {-# HLINT ignore "Use camelCase" #-}
 module ClassFileParser where
 
@@ -16,6 +16,7 @@ import Text.Parsec
 import Text.Parsec.Error (errorMessages, messageString)
 import Text.Printf (printf)
 import Util
+import ConstantPool
 
 type CPReader = ReaderT Env MyErr
 
@@ -43,43 +44,52 @@ instance ClassFileParser ClassFile where
       bt val _ = val
   getClassName cf idx = do
     let cp = cf.constantPool
-    ConstClass nidx <- cpConstClass cp idx
-    cpConstUtf8 cp nidx
+    ConstClass nidx <- cpEntry cp idx
+    cpEntry cp nidx
   getThisClassName cf = getClassName cf cf.thisClass
   getSuperClassName cf = getClassName cf cf.superClass
   getUtf8Name cf idx = do 
     let cp = cf.constantPool
-    cpConstUtf8 cp idx 
+    cpEntry cp idx 
 
-class CPInfoChecker a where
-  checkCPInfo :: a -> CPReader ()
+class HasConstraintChecker a where
+  checkConstraint :: a -> CPReader ()
 
-instance CPInfoChecker CPInfo where
-  checkCPInfo = checkCPInfo_
-
-checkCPInfo_ :: CPInfo -> CPReader ()
-checkCPInfo_ (Constant_Utf8 _) = return ()
-checkCPInfo_ (Constant_Integer _) = return ()
-checkCPInfo_ (Constant_Float _) = return ()
-checkCPInfo_ (Constant_Long _) = do
-  idx <- asks envCurPoolIdx
-  checkConstantInvalid (idx + 1)
-checkCPInfo_ (Constant_Double _) = do
-  idx <- asks envCurPoolIdx
-  checkConstantInvalid (idx + 1)
-checkCPInfo_ (Constant_Class _) = do
-  idx <- asks envCurPoolIdx
-  void $ checkConstantClass idx
-checkCPInfo_ (Constant_String cs) = do
-  let ConstString idx = cs
-  void $ checkConstantUtf8 idx
-checkCPInfo_ (Constant_Fieldref fr) = do
+---------------hhhhhhhhhhhhhh-----------------
+instance HasConstraintChecker () where 
+  -- invalid
+  checkConstraint _ = return ()
+instance HasConstraintChecker ConstUtf8 where 
+  checkConstraint _ = return ()
+instance HasConstraintChecker ConstInteger where 
+  checkConstraint _ = return ()
+instance HasConstraintChecker ConstFloat where 
+  checkConstraint _ = return ()
+instance HasConstraintChecker ConstLong where 
+  checkConstraint _ = do
+   idx <- asks envCurPoolIdx
+   checkConstantInvalid (idx + 1)
+instance HasConstraintChecker ConstDouble where 
+  checkConstraint _ = do
+   idx <- asks envCurPoolIdx
+   checkConstantInvalid (idx + 1)
+instance HasConstraintChecker ConstClass where 
+  checkConstraint _ = do
+   idx <- asks envCurPoolIdx
+   void $ checkConstantClass idx
+instance HasConstraintChecker ConstString where 
+  checkConstraint cs = do
+   let ConstString idx = cs
+   void $ checkConstantUtf8 idx
+instance HasConstraintChecker ConstFieldref where 
+ checkConstraint fr = do
   let ConstFieldref cIdx ntIdx = fr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
   _ <- checkFieldName nIdx
   void $ checkFieldDesc desIdx
-checkCPInfo_ (Constant_Methodref mr) = do
+instance HasConstraintChecker ConstMethodref where 
+ checkConstraint mr = do
   let ConstMethodref cIdx ntIdx = mr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
@@ -92,7 +102,9 @@ checkCPInfo_ (Constant_Methodref mr) = do
     $ Left
     $ ClassFormatError
     $ printf "Unexpected method name and type: %s:%s" name desc
-checkCPInfo_ (Constant_InterfaceMethodref imr) = do
+
+instance HasConstraintChecker ConstInterfaceMethodref where 
+ checkConstraint imr = do
   let ConstInterfaceMethodref cIdx ntIdx = imr
   _ <- checkConstantClass cIdx
   ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
@@ -103,9 +115,11 @@ checkCPInfo_ (Constant_InterfaceMethodref imr) = do
       Left $
         ClassFormatError $
           printf "Unexpected interface method name and type: %s:%s" name
--- Already checked by Fieldref or Methodref or Dynamic or InvokeDynamic
-checkCPInfo_ (Constant_NameAndType _) = return ()
-checkCPInfo_ (Constant_MethodHandle h) = do
+
+instance HasConstraintChecker ConstNameAndType where 
+ checkConstraint _ = return () 
+instance HasConstraintChecker ConstMethodHandle where 
+ checkConstraint h = do
   cp <- asks envPool
   let major = cpMajorVersion cp
   let ConstMethodHandle rkind ridx = h
@@ -153,23 +167,28 @@ checkCPInfo_ (Constant_MethodHandle h) = do
           classFormatErr $
             printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
     _ -> return ()
-checkCPInfo_ (Constant_MethodType (ConstMethodType idx)) = void $ checkMethodDesc idx
-checkCPInfo_ (Constant_Dynamic (ConstDynamic attrIdx idx)) = do
+
+instance HasConstraintChecker ConstMethodType where 
+ checkConstraint (ConstMethodType idx) = void $ checkMethodDesc idx
+instance HasConstraintChecker ConstDynamic where 
+ checkConstraint (ConstDynamic attrIdx idx) = do
   checkBootstrapAttrIdx attrIdx
   ConstNameAndType _ dIdx <- checkConstantNameAndType idx
   void $ checkFieldDesc dIdx
-checkCPInfo_ (Constant_InvokeDynamic (ConstInvokeDynamic attrIdx idx)) = do
+instance HasConstraintChecker ConstInvokeDynamic where 
+ checkConstraint (ConstInvokeDynamic attrIdx idx) = do
   checkBootstrapAttrIdx attrIdx
   ConstNameAndType _ dIdx <- checkConstantNameAndType idx
   void $ checkMethodDesc dIdx
-checkCPInfo_ (Constant_Module (ConstModule idx)) = do
+instance HasConstraintChecker ConstModule where 
+ checkConstraint (ConstModule idx) = do
   checkIsModule
   void $ checkModuleName idx
-checkCPInfo_ (Constant_Package (ConstPackage idx)) = do
+instance HasConstraintChecker ConstPackage where 
+ checkConstraint (ConstPackage idx) = do
   checkIsModule
   void $ checkPackageName idx
-checkCPInfo_ Constant_Invalid = return ()
-
+---------------hhhhhhhhhhhhffffffffffffff------------
 checkConstantPoolInfo :: ClassFile -> MyErr ()
 checkConstantPoolInfo cf =
   do
@@ -184,10 +203,10 @@ checkConstantPoolInfo cf =
       classFormatErr "Constant pool entry at zero is not invalid."
     runReaderT (doCheckCPInfo infos) (Env cf cp 0)
 
-doCheckCPInfo :: [CPInfo] -> CPReader ()
+doCheckCPInfo :: [CPEntryAny] -> CPReader ()
 doCheckCPInfo [] = return ()
 doCheckCPInfo (x : xs) = do
-  checkCPInfo x
+  checkConstraint (castCPEntry x)
   local incIdx $ doCheckCPInfo xs
   where
     incIdx (Env cf cp idx) = Env cf cp (idx + 1)
@@ -216,18 +235,18 @@ checkConstantInvalid idx = do
 checkConstantUtf8 :: U2 -> CPReader ConstUtf8
 checkConstantUtf8 idx = do
   cp <- asks envPool
-  lift $ cpConstUtf8 cp idx
+  lift $ cpEntry cp idx
 
 checkConstantClass :: U2 -> CPReader ConstUtf8
 checkConstantClass idx = do
   cp <- asks envPool
-  ConstClass nidx <- lift $ cpConstClass cp idx
+  ConstClass nidx <- lift $ cpEntry cp idx
   utf8Checker verifyLegalClassName nidx
 
 checkConstantMethodref :: U2 -> CPReader ConstMethodref
 checkConstantMethodref idx = do
   cp <- asks envPool
-  lift $ cpConstMethodref cp idx
+  lift $ cpEntry cp idx
 
 checkConstantMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantMethodref_name idx = do
@@ -238,7 +257,7 @@ checkConstantMethodref_name idx = do
 checkConstantInterfaceMethodref :: U2 -> CPReader ConstInterfaceMethodref
 checkConstantInterfaceMethodref idx = do
   cp <- asks envPool
-  lift $ cpConstInterfaceMethodref cp idx
+  lift $ cpEntry cp idx
 
 checkConstantInterfaceMethodref_name :: U2 -> CPReader ConstUtf8
 checkConstantInterfaceMethodref_name idx = do
@@ -249,7 +268,7 @@ checkConstantInterfaceMethodref_name idx = do
 checkConstantNameAndType :: U2 -> CPReader ConstNameAndType
 checkConstantNameAndType idx = do
   cp <- asks envPool
-  r@(ConstNameAndType nIdx dIdx) <- lift $ cpConstNameAndType cp idx
+  r@(ConstNameAndType nIdx dIdx) <- lift $ cpEntry cp idx
   _ <- checkConstantUtf8 nIdx
   _ <- checkConstantUtf8 dIdx
   return r
@@ -257,7 +276,7 @@ checkConstantNameAndType idx = do
 utf8Checker :: (Text -> MyErr Text) -> U2 -> CPReader ConstUtf8
 utf8Checker checker idx = do
   cp <- asks envPool
-  r@(ConstUtf8 name) <- lift $ cpConstUtf8 cp idx
+  r@(ConstUtf8 name) <- lift $ cpEntry cp idx
   _ <- lift $ checker name
   return r
 
