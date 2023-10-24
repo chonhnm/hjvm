@@ -150,14 +150,14 @@ data ReferenceKind
   | REF_invokeInterface -- 9
   deriving (Enum, Eq, Show)
 
-class ConstantPool cp where
+class IConstantPool cp where
   cpCheckIndex :: cp -> U2 -> MyErr ()
   cpCheckTag :: CPTag -> cp -> U2 -> MyErr ()
   cpElement :: cp -> U2 -> MyErr CPEntry
   cpTag :: cp -> U2 -> MyErr CPTag
   cpEntry :: (Typeable a) => cp -> U2 -> MyErr a
 
-instance ConstantPool ConstantPoolInfo where
+instance IConstantPool ConstantPoolInfo where
   cpCheckIndex cp n = do
     let count = cpCount cp
     if n >= 1 && n < count
