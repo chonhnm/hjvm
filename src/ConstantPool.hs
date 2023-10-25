@@ -102,10 +102,10 @@ castCPEntry :: (Typeable a) => CPEntryAny -> Maybe a
 castCPEntry = contCPEntry cast
 
 class HasConstraintChecker a where
-  type HasCP a 
-  checkConstraint :: a -> HasCP ()
+  type HasCPReader a 
+  checkConstraint :: a -> HasCPReader ()
 
-checkCPEntry :: CPEntryAny -> HasCP ()
+checkCPEntry :: CPEntryAny -> HasCPReader ()
 checkCPEntry = contCPEntry checkConstraint
 
 

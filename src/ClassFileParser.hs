@@ -57,7 +57,7 @@ instance ClassFileParser ClassFile where
     cpEntry cp idx
 
 instance HasConstraintChecker () where
-  type HasCP () = CPReader ()
+  type HasCPReader () = CPReader ()
   checkConstraint _ = return ()
 
 instance HasConstraintChecker ConstUtf8 where
