@@ -1,8 +1,11 @@
+{-# LANGUAGE GADTs #-}
+
 module Pretty (ppClassFile) where
 
 import AccessFlags (IAccessFlags (encodeFlags, encodeHex))
 import ClassFile
 import ClassFileParser (ClassFileParser (getClassName, getSuperClassName, getThisClassName, getUtf8Name))
+import ConstantPool
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks)
 import Control.Monad.Trans.State (StateT, evalStateT, get, modify)
@@ -123,10 +126,10 @@ pprConstantPoolInfo = do
   let cpDoc = hang indentOfSubItem (title : infosDoc)
   return cpDoc
 
-instance Pretty CPInfo where
+instance Pretty CPEntryAny where
   ppr = pprCPInfoWrap
 
-pprCPInfoWrap :: CPInfo -> CPReader Doc
+pprCPInfoWrap :: CPEntryAny -> CPReader Doc
 pprCPInfoWrap info = do
   val <- pprCPInfo info
   idx <-
@@ -136,25 +139,25 @@ pprCPInfoWrap info = do
   incCPIdx
   return $ idx <+> val
 
-pprCPInfo :: CPInfo -> CPReader Doc
-pprCPInfo Constant_Invalid = return PP.empty
-pprCPInfo (Constant_Utf8 x) = ppr x
-pprCPInfo (Constant_Integer x) = ppr x
-pprCPInfo (Constant_Float x) = ppr x
-pprCPInfo (Constant_Long x) = ppr x
-pprCPInfo (Constant_Double x) = ppr x
-pprCPInfo (Constant_Class x) = ppr x
-pprCPInfo (Constant_String x) = ppr x
-pprCPInfo (Constant_Fieldref x) = ppr x
-pprCPInfo (Constant_Methodref x) = ppr x
-pprCPInfo (Constant_InterfaceMethodref x) = ppr x
-pprCPInfo (Constant_NameAndType x) = ppr x
-pprCPInfo (Constant_MethodHandle x) = ppr x
-pprCPInfo (Constant_MethodType x) = ppr x
-pprCPInfo (Constant_Dynamic x) = ppr x
-pprCPInfo (Constant_InvokeDynamic x) = ppr x
-pprCPInfo (Constant_Module x) = ppr x
-pprCPInfo (Constant_Package x) = ppr x
+pprCPInfo :: CPEntryAny -> CPReader Doc
+pprCPInfo (CPEntryAny Constant_Invalid) = return PP.empty
+pprCPInfo (CPEntryAny (Constant_Utf8 x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Integer x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Float x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Long x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Double x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Class x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_String x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Fieldref x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Methodref x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_InterfaceMethodref x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_NameAndType x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_MethodHandle x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_MethodType x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Dynamic x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_InvokeDynamic x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Module x)) = ppr x
+pprCPInfo (CPEntryAny (Constant_Package x)) = ppr x
 
 incCPIdx :: CPReader ()
 incCPIdx = lift $ modify (+ 1)
@@ -279,7 +282,7 @@ instance Pretty ConstPackage where
 getNameAndType :: ClassFile -> U2 -> MyErr ConstUtf8
 getNameAndType cf idx = do
   let cp = cf.constantPool
-  (ConstNameAndType nIdx dIdx) <- cpConstNameAndType cp idx
+  (ConstNameAndType nIdx dIdx) <- cpEntry cp idx
   getNameAndTypeUnwraped cf nIdx dIdx
 
 getNameAndTypeUnwraped :: ClassFile -> U2 -> U2 -> MyErr ConstUtf8

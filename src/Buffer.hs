@@ -5,6 +5,7 @@ module Buffer where
 import ClassFile
 import ClassFileChecker (checkAttrLength)
 import ClassFileParser (checkConstantPoolInfo)
+import ConstantPool
 import Control.Monad (liftM2)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), ask, asks, local, withReaderT)
@@ -18,8 +19,8 @@ import Data.List (singleton)
 import Data.Text qualified as T
 import GHC.Base (assert)
 import Numeric (showHex)
-import Util
 import Pretty (ppClassFile)
+import Util
 
 parseMagic :: Get U4
 parseMagic = do
@@ -59,7 +60,7 @@ parseConstantPoolInfo = do
   xss <- withReaderT cpMajorVersion $ parseCPInfos (cnt - 1)
   let (tag, info) = unzip $ concat xss
   cp <- ask
-  return cp {cpTags = JVM_Constant_Invalid : tag, cpInfos = Constant_Invalid : info}
+  return cp {cpTags = JVM_Constant_Invalid : tag, cpInfos = CPEntryAny Constant_Invalid : info}
 
 parseCPInfos :: U2 -> MajorVersionReader [[CPTI]]
 parseCPInfos n
@@ -70,33 +71,33 @@ parseCPInfos n
       xss <- parseCPInfos (n - fromIntegral (length xs))
       return $ xs : xss
 
-type CPTI = (CPTag, CPInfo)
+type CPTI = (CPEntryTag, CPEntryAny)
 
 parseCPInfo :: MajorVersionReader [CPTI]
 parseCPInfo = do
   tag <- lift getWord8
   case tag of
-    1 -> singleton . (JVM_Constant_Utf8,) . Constant_Utf8 <$> lift parseConstantUtf8
-    3 -> singleton . (JVM_Constant_Integer,) . Constant_Integer <$> lift parseConstantInteger
-    4 -> singleton . (JVM_Constant_Float,) . Constant_Float <$> lift parseConstantFloat
+    1 -> singleton . (JVM_Constant_Utf8,) . CPEntryAny . Constant_Utf8 <$> lift parseConstantUtf8
+    3 -> singleton . (JVM_Constant_Integer,) . CPEntryAny . Constant_Integer <$> lift parseConstantInteger
+    4 -> singleton . (JVM_Constant_Float,) . CPEntryAny . Constant_Float <$> lift parseConstantFloat
     5 -> do
       info <- Constant_Long <$> lift parseConstantLong
-      return [(JVM_Constant_Long, info), (JVM_Constant_Invalid, Constant_Invalid)]
+      return [(JVM_Constant_Long, CPEntryAny info), (JVM_Constant_Invalid, CPEntryAny Constant_Invalid)]
     6 -> do
       info <- Constant_Double <$> lift parseConstantDouble
-      return [(JVM_Constant_Double, info), (JVM_Constant_Invalid, Constant_Invalid)]
-    7 -> (singleton . (JVM_Constant_Class,)) . Constant_Class <$> lift parseConstantClass
-    8 -> singleton . (JVM_Constant_String,) . Constant_String <$> lift parseConstantString
-    9 -> singleton . (JVM_Constant_Fieldref,) . Constant_Fieldref <$> lift parseConstantFieldref
-    10 -> singleton . (JVM_Constant_Methodref,) . Constant_Methodref <$> lift parseConstantMethodref
-    11 -> singleton . (JVM_Constant_InterfaceMethodref,) . Constant_InterfaceMethodref <$> lift parseConstantInterfaceMethodref
-    12 -> singleton . (JVM_Constant_NameAndType,) . Constant_NameAndType <$> lift parseConstantNameAndType
-    15 -> singleton . (JVM_Constant_MethodHandle,) . Constant_MethodHandle <$> parseConstantMethodHandle
-    16 -> singleton . (JVM_Constant_MethodType,) . Constant_MethodType <$> parseConstantMethodType
-    17 -> singleton . (JVM_Constant_Dynamic,) . Constant_Dynamic <$> parseConstantDynamic
-    18 -> singleton . (JVM_Constant_InvokeDynamic,) . Constant_InvokeDynamic <$> parseConstantInvokeDynamic
-    19 -> singleton . (JVM_Constant_Module,) . Constant_Module <$> parseConstantModule
-    20 -> singleton . (JVM_Constant_Package,) . Constant_Package <$> parseConstantPackage
+      return [(JVM_Constant_Double, CPEntryAny info), (JVM_Constant_Invalid, CPEntryAny Constant_Invalid)]
+    7 -> (singleton . (JVM_Constant_Class,)) . CPEntryAny . Constant_Class <$> lift parseConstantClass
+    8 -> singleton . (JVM_Constant_String,) . CPEntryAny . Constant_String <$> lift parseConstantString
+    9 -> singleton . (JVM_Constant_Fieldref,) . CPEntryAny . Constant_Fieldref <$> lift parseConstantFieldref
+    10 -> singleton . (JVM_Constant_Methodref,) . CPEntryAny . Constant_Methodref <$> lift parseConstantMethodref
+    11 -> singleton . (JVM_Constant_InterfaceMethodref,) . CPEntryAny . Constant_InterfaceMethodref <$> lift parseConstantInterfaceMethodref
+    12 -> singleton . (JVM_Constant_NameAndType,) . CPEntryAny . Constant_NameAndType <$> lift parseConstantNameAndType
+    15 -> singleton . (JVM_Constant_MethodHandle,) . CPEntryAny . Constant_MethodHandle <$> parseConstantMethodHandle
+    16 -> singleton . (JVM_Constant_MethodType,) . CPEntryAny . Constant_MethodType <$> parseConstantMethodType
+    17 -> singleton . (JVM_Constant_Dynamic,) . CPEntryAny . Constant_Dynamic <$> parseConstantDynamic
+    18 -> singleton . (JVM_Constant_InvokeDynamic,) . CPEntryAny . Constant_InvokeDynamic <$> parseConstantInvokeDynamic
+    19 -> singleton . (JVM_Constant_Module,) . CPEntryAny . Constant_Module <$> parseConstantModule
+    20 -> singleton . (JVM_Constant_Package,) . CPEntryAny . Constant_Package <$> parseConstantPackage
     _ -> fail $ "unknow constant pool tag: " ++ show (toInteger tag)
 
 parseConstantUtf8 :: Get ConstUtf8
@@ -668,7 +669,7 @@ parseAttributeInfo = do
   cp <- asks constantPool
   attrNameIdx <- lift getWord16be
   len <- lift getWord32be
-  let maybeAttrTag = cpConstUtf8 cp attrNameIdx
+  let maybeAttrTag = cpEntry cp attrNameIdx
   case maybeAttrTag of
     Left err -> error $ show err
     Right (ConstUtf8 attrTag) -> do

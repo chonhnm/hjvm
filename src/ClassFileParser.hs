@@ -1,10 +1,15 @@
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# LANGUAGE GADTs #-}
 {-# HLINT ignore "Use camelCase" #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# OPTIONS_GHC -Wno-missing-methods #-}
+{-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
 module ClassFileParser where
 
 import AccessFlags (IAccessFlags (is_module))
 import ClassFile
+import ConstantPool
 import Control.Monad (unless, when)
 import Control.Monad.Trans.Class (MonadTrans (lift))
 import Control.Monad.Trans.Reader (ReaderT (runReaderT), asks, local)
@@ -16,7 +21,6 @@ import Text.Parsec
 import Text.Parsec.Error (errorMessages, messageString)
 import Text.Printf (printf)
 import Util
-import ConstantPool
 
 type CPReader = ReaderT Env MyErr
 
@@ -48,147 +52,157 @@ instance ClassFileParser ClassFile where
     cpEntry cp nidx
   getThisClassName cf = getClassName cf cf.thisClass
   getSuperClassName cf = getClassName cf cf.superClass
-  getUtf8Name cf idx = do 
+  getUtf8Name cf idx = do
     let cp = cf.constantPool
-    cpEntry cp idx 
+    cpEntry cp idx
 
-class HasConstraintChecker a where
-  checkConstraint :: a -> CPReader ()
+instance HasConstraintChecker () where
+  type HasCP () = CPReader ()
+  checkConstraint _ = return ()
 
----------------hhhhhhhhhhhhhh-----------------
-instance HasConstraintChecker () where 
-  -- invalid
+instance HasConstraintChecker ConstUtf8 where
   checkConstraint _ = return ()
-instance HasConstraintChecker ConstUtf8 where 
+
+instance HasConstraintChecker ConstInteger where
   checkConstraint _ = return ()
-instance HasConstraintChecker ConstInteger where 
+
+instance HasConstraintChecker ConstFloat where
   checkConstraint _ = return ()
-instance HasConstraintChecker ConstFloat where 
-  checkConstraint _ = return ()
-instance HasConstraintChecker ConstLong where 
+
+instance HasConstraintChecker ConstLong where
   checkConstraint _ = do
-   idx <- asks envCurPoolIdx
-   checkConstantInvalid (idx + 1)
-instance HasConstraintChecker ConstDouble where 
+    idx <- asks envCurPoolIdx
+    checkConstantInvalid (idx + 1)
+
+instance HasConstraintChecker ConstDouble where
   checkConstraint _ = do
-   idx <- asks envCurPoolIdx
-   checkConstantInvalid (idx + 1)
-instance HasConstraintChecker ConstClass where 
+    idx <- asks envCurPoolIdx
+    checkConstantInvalid (idx + 1)
+
+instance HasConstraintChecker ConstClass where
   checkConstraint _ = do
-   idx <- asks envCurPoolIdx
-   void $ checkConstantClass idx
-instance HasConstraintChecker ConstString where 
+    idx <- asks envCurPoolIdx
+    void $ checkConstantClass idx
+
+instance HasConstraintChecker ConstString where
   checkConstraint cs = do
-   let ConstString idx = cs
-   void $ checkConstantUtf8 idx
-instance HasConstraintChecker ConstFieldref where 
- checkConstraint fr = do
-  let ConstFieldref cIdx ntIdx = fr
-  _ <- checkConstantClass cIdx
-  ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  _ <- checkFieldName nIdx
-  void $ checkFieldDesc desIdx
-instance HasConstraintChecker ConstMethodref where 
- checkConstraint mr = do
-  let ConstMethodref cIdx ntIdx = mr
-  _ <- checkConstantClass cIdx
-  ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  ConstUtf8 name <- checkMethodName nIdx
-  ConstUtf8 desc <- checkMethodDesc desIdx
-  when (T.head name == jvm_signature_special)
-    $ when
-      (name /= T.pack "<init>" || T.last desc /= jvm_signature_void)
-    $ lift
-    $ Left
-    $ ClassFormatError
-    $ printf "Unexpected method name and type: %s:%s" name desc
+    let ConstString idx = cs
+    void $ checkConstantUtf8 idx
 
-instance HasConstraintChecker ConstInterfaceMethodref where 
- checkConstraint imr = do
-  let ConstInterfaceMethodref cIdx ntIdx = imr
-  _ <- checkConstantClass cIdx
-  ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
-  ConstUtf8 name <- checkMethodName nIdx
-  _ <- checkMethodDesc desIdx
-  when (T.head name == jvm_signature_special) $
-    lift $
-      Left $
-        ClassFormatError $
-          printf "Unexpected interface method name and type: %s:%s" name
+instance HasConstraintChecker ConstFieldref where
+  checkConstraint fr = do
+    let ConstFieldref cIdx ntIdx = fr
+    _ <- checkConstantClass cIdx
+    ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
+    _ <- checkFieldName nIdx
+    void $ checkFieldDesc desIdx
 
-instance HasConstraintChecker ConstNameAndType where 
- checkConstraint _ = return () 
-instance HasConstraintChecker ConstMethodHandle where 
- checkConstraint h = do
-  cp <- asks envPool
-  let major = cpMajorVersion cp
-  let ConstMethodHandle rkind ridx = h
-  case rkind of
-    x
-      | x == REF_getField
-          || x == REF_getStatic
-          || x == REF_putField
-          || x == REF_putStatic ->
-          lift $ cpCheckTag JVM_Constant_Fieldref cp ridx
-    x
-      | x == REF_invokeVirtual
-          || x == REF_newInvokeSpecial ->
-          lift $ cpCheckTag JVM_Constant_Methodref cp ridx
-    x
-      | x == REF_invokeStatic
-          || x == REF_invokeSpecial ->
-          if major < java_8_version
-            then lift $ cpCheckTag JVM_Constant_Methodref cp ridx
-            else
+instance HasConstraintChecker ConstMethodref where
+  checkConstraint mr = do
+    let ConstMethodref cIdx ntIdx = mr
+    _ <- checkConstantClass cIdx
+    ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
+    ConstUtf8 name <- checkMethodName nIdx
+    ConstUtf8 desc <- checkMethodDesc desIdx
+    when (T.head name == jvm_signature_special)
+      $ when
+        (name /= T.pack "<init>" || T.last desc /= jvm_signature_void)
+      $ lift
+      $ Left
+      $ ClassFormatError
+      $ printf "Unexpected method name and type: %s:%s" name desc
+
+instance HasConstraintChecker ConstInterfaceMethodref where
+  checkConstraint imr = do
+    let ConstInterfaceMethodref cIdx ntIdx = imr
+    _ <- checkConstantClass cIdx
+    ConstNameAndType nIdx desIdx <- checkConstantNameAndType ntIdx
+    ConstUtf8 name <- checkMethodName nIdx
+    _ <- checkMethodDesc desIdx
+    when (T.head name == jvm_signature_special) $
+      lift $
+        Left $
+          ClassFormatError $
+            printf "Unexpected interface method name and type: %s:%s" name
+
+instance HasConstraintChecker ConstNameAndType where
+  checkConstraint _ = return ()
+
+instance HasConstraintChecker ConstMethodHandle where
+  checkConstraint h = do
+    cp <- asks envPool
+    let major = cpMajorVersion cp
+    let ConstMethodHandle rkind ridx = h
+    case rkind of
+      x
+        | x == REF_getField
+            || x == REF_getStatic
+            || x == REF_putField
+            || x == REF_putStatic ->
+            lift $ cpCheckTag JVM_Constant_Fieldref cp ridx
+      x
+        | x == REF_invokeVirtual
+            || x == REF_newInvokeSpecial ->
+            lift $ cpCheckTag JVM_Constant_Methodref cp ridx
+      x
+        | x == REF_invokeStatic
+            || x == REF_invokeSpecial ->
+            if major < java_8_version
+              then lift $ cpCheckTag JVM_Constant_Methodref cp ridx
+              else
+                lift $
+                  cpCheckTag JVM_Constant_Methodref cp ridx
+                    <> cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
+      REF_invokeInterface -> lift $ cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
+      _ -> lift $ classFormatErr $ printf "Unknown reference kind: %s." (show rkind)
+
+    case rkind of
+      x
+        | x == REF_invokeVirtual
+            || x == REF_invokeStatic
+            || x == REF_invokeSpecial
+            || x == REF_invokeInterface -> do
+            tag <- lift $ cpTag cp ridx
+            ConstUtf8 name <- case tag of
+              JVM_Constant_Methodref -> checkConstantMethodref_name ridx
+              _ -> checkConstantInterfaceMethodref_name ridx
+            when (name == T.pack "<init>" || name == T.pack "<clinit>") $
               lift $
-                cpCheckTag JVM_Constant_Methodref cp ridx
-                  <> cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
-    REF_invokeInterface -> lift $ cpCheckTag JVM_Constant_InterfaceMethodref cp ridx
-    _ -> lift $ classFormatErr $ printf "Unknown reference kind: %s." (show rkind)
+                classFormatErr $
+                  printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
+      REF_newInvokeSpecial -> do
+        ConstUtf8 name <- checkConstantMethodref_name ridx
+        when (name /= T.pack "<init>") $
+          lift $
+            classFormatErr $
+              printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
+      _ -> return ()
 
-  case rkind of
-    x
-      | x == REF_invokeVirtual
-          || x == REF_invokeStatic
-          || x == REF_invokeSpecial
-          || x == REF_invokeInterface -> do
-          tag <- lift $ cpTag cp ridx
-          ConstUtf8 name <- case tag of
-            JVM_Constant_Methodref -> checkConstantMethodref_name ridx
-            _ -> checkConstantInterfaceMethodref_name ridx
-          when (name == T.pack "<init>" || name == T.pack "<clinit>") $
-            lift $
-              classFormatErr $
-                printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
-    REF_newInvokeSpecial -> do
-      ConstUtf8 name <- checkConstantMethodref_name ridx
-      when (name /= T.pack "<init>") $
-        lift $
-          classFormatErr $
-            printf "reference kind \"%s\" do not support method \"%s\"." (show rkind) name
-    _ -> return ()
+instance HasConstraintChecker ConstMethodType where
+  checkConstraint (ConstMethodType idx) = void $ checkMethodDesc idx
 
-instance HasConstraintChecker ConstMethodType where 
- checkConstraint (ConstMethodType idx) = void $ checkMethodDesc idx
-instance HasConstraintChecker ConstDynamic where 
- checkConstraint (ConstDynamic attrIdx idx) = do
-  checkBootstrapAttrIdx attrIdx
-  ConstNameAndType _ dIdx <- checkConstantNameAndType idx
-  void $ checkFieldDesc dIdx
-instance HasConstraintChecker ConstInvokeDynamic where 
- checkConstraint (ConstInvokeDynamic attrIdx idx) = do
-  checkBootstrapAttrIdx attrIdx
-  ConstNameAndType _ dIdx <- checkConstantNameAndType idx
-  void $ checkMethodDesc dIdx
-instance HasConstraintChecker ConstModule where 
- checkConstraint (ConstModule idx) = do
-  checkIsModule
-  void $ checkModuleName idx
-instance HasConstraintChecker ConstPackage where 
- checkConstraint (ConstPackage idx) = do
-  checkIsModule
-  void $ checkPackageName idx
----------------hhhhhhhhhhhhffffffffffffff------------
+instance HasConstraintChecker ConstDynamic where
+  checkConstraint (ConstDynamic attrIdx idx) = do
+    checkBootstrapAttrIdx attrIdx
+    ConstNameAndType _ dIdx <- checkConstantNameAndType idx
+    void $ checkFieldDesc dIdx
+
+instance HasConstraintChecker ConstInvokeDynamic where
+  checkConstraint (ConstInvokeDynamic attrIdx idx) = do
+    checkBootstrapAttrIdx attrIdx
+    ConstNameAndType _ dIdx <- checkConstantNameAndType idx
+    void $ checkMethodDesc dIdx
+
+instance HasConstraintChecker ConstModule where
+  checkConstraint (ConstModule idx) = do
+    checkIsModule
+    void $ checkModuleName idx
+
+instance HasConstraintChecker ConstPackage where
+  checkConstraint (ConstPackage idx) = do
+    checkIsModule
+    void $ checkPackageName idx
+
 checkConstantPoolInfo :: ClassFile -> MyErr ()
 checkConstantPoolInfo cf =
   do
@@ -206,7 +220,7 @@ checkConstantPoolInfo cf =
 doCheckCPInfo :: [CPEntryAny] -> CPReader ()
 doCheckCPInfo [] = return ()
 doCheckCPInfo (x : xs) = do
-  checkConstraint (castCPEntry x)
+  _ <- checkCPEntry x
   local incIdx $ doCheckCPInfo xs
   where
     incIdx (Env cf cp idx) = Env cf cp (idx + 1)

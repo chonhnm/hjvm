@@ -3,6 +3,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use camelCase" #-}
+{-# LANGUAGE TypeFamilies #-}
 module ConstantPool where
 
 import ClassFileConsts (AttrIndex, CPIndex, U2)
@@ -89,19 +90,28 @@ data CPEntryTag
   | JVM_Constant_Package
   deriving (Show, Eq)
 
-data CPEntryAny = forall a. (ICPEntry a) => CPEntryAny (CPEntry a)
+data CPEntryAny = forall a. (ICPEntry a, HasConstraintChecker a) => CPEntryAny (CPEntry a)
 
 instance Show CPEntryAny where
   show = contCPEntry show
 
-contCPEntry :: (forall a. (ICPEntry a) => a -> r) -> CPEntryAny -> r
+contCPEntry :: (forall a. (ICPEntry a, HasConstraintChecker a) => a -> r) -> CPEntryAny -> r
 contCPEntry f (CPEntryAny a) = f (unwrapCPEntry a)
 
 castCPEntry :: (Typeable a) => CPEntryAny -> Maybe a
 castCPEntry = contCPEntry cast
 
+class HasConstraintChecker a where
+  type HasCP a 
+  checkConstraint :: a -> HasCP ()
+
+checkCPEntry :: CPEntryAny -> HasCP ()
+checkCPEntry = contCPEntry checkConstraint
+
 
 class (Typeable a, Show a) => ICPEntry a
+
+instance ICPEntry ()
 
 instance ICPEntry ConstUtf8
 
