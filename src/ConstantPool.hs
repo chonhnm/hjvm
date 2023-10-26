@@ -1,13 +1,13 @@
+{-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use camelCase" #-}
 module ConstantPool where
 
 import Control.Monad (when)
-import Data.Dynamic (Dynamic, fromDynamic, toDyn)
 import Data.Int (Int32, Int64)
 import Data.Text qualified as T
-import Data.Typeable (Typeable)
+import Data.Typeable (Typeable, cast)
 import Text.Printf (printf)
 import Util
 
@@ -42,6 +42,29 @@ data CPEntry
   | Constant_Module ConstModule
   | Constant_Package ConstPackage
   deriving (Typeable, Show)
+
+contCPEntry :: (forall a. (Typeable a) => a -> r) -> CPEntry -> r
+contCPEntry f (Constant_Invalid x) = f x
+contCPEntry f (Constant_Utf8 x) = f x
+contCPEntry f (Constant_Integer x) = f x
+contCPEntry f (Constant_Float x) = f x
+contCPEntry f (Constant_Long x) = f x
+contCPEntry f (Constant_Double x) = f x
+contCPEntry f (Constant_Class x) = f x
+contCPEntry f (Constant_String x) = f x
+contCPEntry f (Constant_Fieldref x) = f x
+contCPEntry f (Constant_Methodref x) = f x
+contCPEntry f (Constant_InterfaceMethodref x) = f x
+contCPEntry f (Constant_NameAndType x) = f x
+contCPEntry f (Constant_MethodHandle x) = f x
+contCPEntry f (Constant_MethodType x) = f x
+contCPEntry f (Constant_Dynamic x) = f x
+contCPEntry f (Constant_InvokeDynamic x) = f x
+contCPEntry f (Constant_Module x) = f x
+contCPEntry f (Constant_Package x) = f x
+
+castCPEntry :: forall a. (Typeable a) => CPEntry -> Maybe a
+castCPEntry = contCPEntry cast
 
 data ConstInvalid = ConstInvalid deriving (Show)
 
@@ -176,39 +199,13 @@ instance IConstantPool ConstantPoolInfo where
       Left $
         ClassFormatError $
           printf "Expected: %s, Actual: %s" (show tag) (show atag)
-  cpEntry = cpType
+  cpEntry cp idx = do
+    info <- cpElement cp idx
+    case castCPEntry info of
+      Nothing -> unmatchedErr info idx
+      Just x -> return x
 
-cpType :: (Typeable a) => ConstantPoolInfo -> U2 -> MyErr a
-cpType cp idx = do
-  dyn <- cpDynamic cp idx
-  case fromDynamic dyn of
-    Nothing -> unmatchedErr dyn idx
-    Just x -> return x
-
-cpDynamic :: ConstantPoolInfo -> U2 -> MyErr Dynamic
-cpDynamic cp idx = do
-  info <- cpElement cp idx
-  case info of
-    Constant_Invalid x -> Right $ toDyn x
-    Constant_Utf8 x -> Right $ toDyn x
-    Constant_Integer x -> Right $ toDyn x
-    Constant_Float x -> Right $ toDyn x
-    Constant_Long x -> Right $ toDyn x
-    Constant_Double x -> Right $ toDyn x
-    Constant_Class x -> Right $ toDyn x
-    Constant_String x -> Right $ toDyn x
-    Constant_Fieldref x -> Right $ toDyn x
-    Constant_Methodref x -> Right $ toDyn x
-    Constant_InterfaceMethodref x -> Right $ toDyn x
-    Constant_NameAndType x -> Right $ toDyn x
-    Constant_MethodHandle x -> Right $ toDyn x
-    Constant_MethodType x -> Right $ toDyn x
-    Constant_Dynamic x -> Right $ toDyn x
-    Constant_InvokeDynamic x -> Right $ toDyn x
-    Constant_Module x -> Right $ toDyn x
-    Constant_Package x -> Right $ toDyn x
-
-unmatchedErr :: Dynamic -> U2 -> MyErr a
+unmatchedErr :: CPEntry -> U2 -> MyErr a
 unmatchedErr actual idx =
   Left $
     PE $
