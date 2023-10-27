@@ -6,7 +6,8 @@ module Util
     MyErr,
     classFormatErr,
     bitLength,
-    digitLength
+    digitLength,
+    ClassName,
   )
 where
 
@@ -14,6 +15,7 @@ import ClassFileConsts
 import Data.Bits (Bits (shiftR))
 import Data.ByteString qualified as B
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding (decodeUtf8)
 
 -- TODO:  convert jvm specified utf8 format to text
@@ -23,6 +25,7 @@ decodeUtf8Jvm = decodeUtf8
 data AppErr
   = PE CheckedError
   | ClassFormatError String
+  | ClassNotFound String
   | UnknownErr String
   deriving (Show)
 
@@ -56,3 +59,5 @@ digitLength n
 digitLength_ :: (Integral a) => a -> Int
 digitLength_ 0 = 0
 digitLength_ n = 1 + digitLength_ (n `div` 10)
+
+type ClassName = T.Text
