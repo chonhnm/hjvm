@@ -3,6 +3,7 @@
 {-# HLINT ignore "Use lambda-case" #-}
 module ClassFileChecker (checkAttrLength) where
 
+import Attribute
 import ClassFile
 import Data.Typeable (typeOf)
 import Text.Printf (printf)
@@ -63,21 +64,19 @@ instance AttrInfoLen AttrInfo where
       )
   attrLen (PermittedSubclasses xs) = 2 + 2 * fromIntegral (length xs)
 
-instance AttrInfoLen StackMapFrame where 
+instance AttrInfoLen StackMapFrame where
   attrLen (Same_Frame _) = 1
-  attrLen (Same_locals_1_stack_item_frame _ xs) = 1 + stacksLen xs   
+  attrLen (Same_locals_1_stack_item_frame _ xs) = 1 + stacksLen xs
   attrLen (Same_locals_1_stack_item_frame_extented _ _ xs) = 3 + stacksLen xs
-  attrLen Chop_frame{} = 3
-  attrLen Same_frame_extented{} = 3
-  attrLen (Append_frame _ _ xs) = 3 + stacksLen xs 
-  attrLen (Full_frame _ _ locals stacks ) = 7 + stacksLen locals + stacksLen stacks 
+  attrLen Chop_frame {} = 3
+  attrLen Same_frame_extented {} = 3
+  attrLen (Append_frame _ _ xs) = 3 + stacksLen xs
+  attrLen (Full_frame _ _ locals stacks) = 7 + stacksLen locals + stacksLen stacks
 
 stacksLen :: [VerificationTypeInfo] -> U4
 stacksLen xs = sum (map attrLen xs)
 
-
-
-instance AttrInfoLen VerificationTypeInfo where 
+instance AttrInfoLen VerificationTypeInfo where
   attrLen Top_variable_info = 1
   attrLen Integer_variable_info = 1
   attrLen Float_variable_info = 1
@@ -85,9 +84,8 @@ instance AttrInfoLen VerificationTypeInfo where
   attrLen Long_variable_info = 1
   attrLen Null_variable_info = 1
   attrLen UninitializedThis_variable_info = 1
-  attrLen Object_variable_info{} = 3
-  attrLen Uninitialized_variable_info{} = 3
-
+  attrLen Object_variable_info {} = 3
+  attrLen Uninitialized_variable_info {} = 3
 
 instance AttrInfoLenChecker AttributeInfo where
   checkLength (AttributeInfo _ info)

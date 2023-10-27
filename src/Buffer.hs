@@ -2,6 +2,7 @@
 
 module Buffer where
 
+import Attribute
 import ClassFile
 import ClassFileChecker (checkAttrLength)
 import ClassFileParser (checkConstantPoolInfo)
