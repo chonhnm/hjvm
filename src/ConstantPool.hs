@@ -70,17 +70,17 @@ data ConstInvalid = ConstInvalid deriving (Show)
 
 newtype ConstUtf8 = ConstUtf8 T.Text deriving (Show)
 
-newtype ConstInteger = ConstInteger Int32 deriving (Typeable, Show)
+newtype ConstInteger = ConstInteger Int32 deriving (Show)
 
-newtype ConstFloat = ConstFloat Float deriving (Typeable, Show)
+newtype ConstFloat = ConstFloat Float deriving (Show)
 
-newtype ConstLong = ConstLong Int64 deriving (Typeable, Show)
+newtype ConstLong = ConstLong Int64 deriving (Show)
 
-newtype ConstDouble = ConstDouble Double deriving (Typeable, Show)
+newtype ConstDouble = ConstDouble Double deriving (Show)
 
-newtype ConstClass = ConstClass CPIndex deriving (Typeable, Show)
+newtype ConstClass = ConstClass CPIndex deriving (Show)
 
-newtype ConstString = ConstString CPIndex deriving (Typeable, Show)
+newtype ConstString = ConstString CPIndex deriving (Show)
 
 data ConstFieldref
   = ConstFieldref
