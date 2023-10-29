@@ -30,6 +30,7 @@ dependencies:
 - containers 
 - filepath
 - directory
+- optparse-applicative
 
 default-extensions: ImportQualifiedPost
  ,OverloadedRecordDot
