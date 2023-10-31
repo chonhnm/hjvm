@@ -2,40 +2,70 @@ module VM.JavaMain where
 
 import Options.Applicative
 
-data Sample = Sample
-  { hello :: String,
-    quiet :: Bool,
-    enthusiasm :: Int,
-    args :: [String]
+data Options = Options
+  { classpath :: Maybe String,
+    classpathes :: Maybe String,
+    jarfile :: Maybe String,
+    javargs :: [String]
   }
+  deriving (Show)
 
-sample :: Parser Sample
-sample =
-  Sample
-    <$> strOption (long "hello" <> metavar "TARGET" <> help "Target for the greeting")
-    <*> switch (long "quiet" <> short 'q' <> help "Whether to be quiet")
-    <*> option
-      auto
-      ( long "enthusiasm" <> short 'e'
-          <> help "How enthusiastically to greet"
-          <> showDefault
-          <> value 1
-          <> metavar "INT"
-      )
-    <*> some (argument str (metavar "ARGS"))
+data JavaRunType = RunJar String | RunMainClass String deriving (Show)
 
-opts :: ParserInfo Sample
-opts =
+data JavaOptions = JavaOptions
+  { opRunType :: JavaRunType,
+    opClasspathes :: [String],
+    opJavargs :: [String]
+  }
+  deriving (Show)
+
+optionInfo :: ParserInfo Options
+optionInfo =
   info
-    (sample <**> helper)
+    (options <**> helper)
     ( fullDesc
-        <> progDesc "Print a greeting for TARGET"
-        <> header "hello - a test for optparse-applicative"
+        <> progDesc "run java app."
     )
 
-greet :: Sample -> IO ()
-greet (Sample h False n args) = putStrLn $ "Hello, " ++ h ++ replicate n '!' ++ show args 
-greet _ = return ()
+options :: Parser Options
+options =
+  Options
+    <$> optional
+      ( strOption $
+          long "classpath"
+            <> long "cp"
+            <> metavar "CLASSPATH"
+            <> help "class search path of directories and zip/jar files"
+      )
+    <*> optional
+      ( strOption $
+          long "class-path"
+            <> metavar "CLASS-PATH"
+            <> help "A : separated class search path of directories and zip/jar files"
+      )
+    <*> optional
+      ( strOption $
+          long "jar"
+            <> metavar "jarfile"
+      )
+    <*> many (argument str (metavar "ARGS"))
+
+parseOptions :: IO JavaOptions
+parseOptions = do
+  ops <- execParser optionInfo
+  let cp = classpath ops 
+  let cps = classpathes ops 
+
+  let jp = JavaOptions {opClasspathes = []}
+  let args = javargs ops 
+  case jarfile ops of 
+    Just x -> return  jp {opRunType=RunJar x, opJavargs=args}
+    Nothing -> case args of 
+      [] -> error "specify jarfile or mainclass."
+      (x:xs) -> return jp{opRunType=RunMainClass x, opJavargs=xs} 
+
 
 run :: IO ()
-run = greet =<< execParser opts
+run = do
+  ops <- parseOptions
+  print ops
