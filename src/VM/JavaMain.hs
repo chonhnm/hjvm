@@ -1,6 +1,11 @@
+{-# OPTIONS_GHC -Wno-missing-fields #-}
+
 module VM.JavaMain where
 
+import Data.Maybe (maybeToList)
+import Data.Text qualified as T
 import Options.Applicative
+import System.Directory (canonicalizePath, getCurrentDirectory)
 
 data Options = Options
   { classpath :: Maybe String,
@@ -53,17 +58,23 @@ options =
 parseOptions :: IO JavaOptions
 parseOptions = do
   ops <- execParser optionInfo
-  let cp = classpath ops 
-  let cps = classpathes ops 
-
-  let jp = JavaOptions {opClasspathes = []}
-  let args = javargs ops 
-  case jarfile ops of 
-    Just x -> return  jp {opRunType=RunJar x, opJavargs=args}
-    Nothing -> case args of 
+  let cp = maybeToList $ classpath ops
+  let cps = concatMap (T.splitOn ":" . T.pack) (maybeToList $ classpathes ops)
+  let cpss = cp ++ map T.unpack cps
+  canoPathes <- do
+    ps <- mapM canonicalizePath cpss
+    if null ps
+      then do
+        curp <- getCurrentDirectory
+        return [curp]
+      else return ps
+  let jp = JavaOptions {opClasspathes = canoPathes}
+  let args = javargs ops
+  case jarfile ops of
+    Just x -> return jp {opRunType = RunJar x, opJavargs = args}
+    Nothing -> case args of
       [] -> error "specify jarfile or mainclass."
-      (x:xs) -> return jp{opRunType=RunMainClass x, opJavargs=xs} 
-
+      (x : xs) -> return jp {opRunType = RunMainClass x, opJavargs = xs}
 
 run :: IO ()
 run = do
